@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import sys
 from pathlib import Path
 
@@ -14,6 +15,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 APP_IMPORT_STRING = "sci402_agent.api:app"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
+PORT_SCAN_LIMIT = 20
 
 
 def ensure_src_on_path() -> None:
@@ -23,18 +25,43 @@ def ensure_src_on_path() -> None:
         sys.path.insert(0, src_path)
 
 
-def get_port() -> int:
-    """Read the local development port from the environment when provided."""
-    return int(os.getenv("SCI402_PORT", DEFAULT_PORT))
+def is_port_available(host: str, port: int) -> bool:
+    """Return True when the local server can bind to the requested port."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+            server_socket.bind((host, port))
+    except OSError:
+        return False
+
+    return True
+
+
+def get_port(host: str) -> int:
+    """Read or choose the local development port."""
+    configured_port = os.getenv("SCI402_PORT")
+    if configured_port:
+        return int(configured_port)
+
+    for port in range(DEFAULT_PORT, DEFAULT_PORT + PORT_SCAN_LIMIT):
+        if is_port_available(host, port):
+            return port
+
+    raise RuntimeError(
+        f"No available local port found from {DEFAULT_PORT} "
+        f"to {DEFAULT_PORT + PORT_SCAN_LIMIT - 1}."
+    )
 
 
 def main() -> None:
     """Start the local FastAPI development server."""
     ensure_src_on_path()
+    host = os.getenv("SCI402_HOST", DEFAULT_HOST)
+    port = get_port(host)
+    print(f"Starting SCI402 Agent at http://{host}:{port}")
     uvicorn.run(
         APP_IMPORT_STRING,
-        host=os.getenv("SCI402_HOST", DEFAULT_HOST),
-        port=get_port(),
+        host=host,
+        port=port,
         reload=True,
         reload_dirs=[str(SRC_DIR)],
         app_dir=str(SRC_DIR),

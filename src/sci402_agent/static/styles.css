@@ -29,7 +29,6 @@ body {
 }
 
 button,
-input,
 textarea {
   font: inherit;
 }
@@ -150,7 +149,6 @@ h2 {
   font-weight: 800;
 }
 
-.api-key-input,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -160,11 +158,6 @@ textarea {
   outline: none;
 }
 
-.api-key-input {
-  height: 42px;
-  padding: 0 12px;
-}
-
 textarea {
   min-height: 420px;
   padding: 14px;
@@ -172,7 +165,6 @@ textarea {
   line-height: 1.55;
 }
 
-.api-key-input:focus,
 textarea:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(20, 107, 92, 0.13);

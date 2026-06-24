@@ -12,7 +12,6 @@ sys.path.insert(0, str(ROOT / "src"))
 def isolate_real_dotenv(monkeypatch):
     # Keep local .env secrets from changing unit-test expectations.
     for env_var in (
-        "SCI402_API_KEY",
         "SCI402_LLM_API_BASE",
         "SCI402_LLM_API_KEY",
         "SCI402_LLM_MODEL_ID",

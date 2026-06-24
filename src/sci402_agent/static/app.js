@@ -12,7 +12,6 @@ const sampleDraft = [
 ].join(" ");
 
 const elements = {
-  apiKeyInput: document.querySelector("#apiKeyInput"),
   studentText: document.querySelector("#studentText"),
   analyzeButton: document.querySelector("#analyzeButton"),
   feedbackButton: document.querySelector("#feedbackButton"),
@@ -27,21 +26,12 @@ const elements = {
   feedbackBox: document.querySelector("#feedbackBox"),
 };
 
-function apiHeaders() {
-  const headers = {
-    "Content-Type": "application/json",
-  };
-  const apiKey = elements.apiKeyInput.value.trim();
-  if (apiKey) {
-    headers["X-API-Key"] = apiKey;
-  }
-  return headers;
-}
-
 async function postJson(path, body) {
   const response = await fetch(path, {
     method: "POST",
-    headers: apiHeaders(),
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
   const text = await response.text();

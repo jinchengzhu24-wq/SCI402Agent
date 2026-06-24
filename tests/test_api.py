@@ -12,18 +12,7 @@ from sci402_agent.feedback_agent import MODE_2_STRUCTURED_GUIDANCE
 from sci402_agent.llm_client import LLMCallError, LLMConfigurationError
 
 
-def test_health_endpoint_does_not_require_api_key(monkeypatch):
-    monkeypatch.setenv("SCI402_API_KEY", "secret")
-    client = TestClient(create_app())
-
-    response = client.get("/health")
-
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok", "criteria_count": 5}
-
-
 def test_health_endpoint_reports_service_status(monkeypatch):
-    monkeypatch.delenv("SCI402_API_KEY", raising=False)
     client = TestClient(create_app())
 
     response = client.get("/health")
@@ -33,7 +22,6 @@ def test_health_endpoint_reports_service_status(monkeypatch):
 
 
 def test_index_page_is_served(monkeypatch):
-    monkeypatch.delenv("SCI402_API_KEY", raising=False)
     client = TestClient(create_app())
 
     response = client.get("/")
@@ -44,7 +32,6 @@ def test_index_page_is_served(monkeypatch):
 
 
 def test_static_app_script_is_served(monkeypatch):
-    monkeypatch.delenv("SCI402_API_KEY", raising=False)
     client = TestClient(create_app())
 
     response = client.get("/static/app.js")
@@ -54,7 +41,6 @@ def test_static_app_script_is_served(monkeypatch):
 
 
 def test_criteria_endpoint_returns_ordered_rubric_rules(monkeypatch):
-    monkeypatch.delenv("SCI402_API_KEY", raising=False)
     client = TestClient(create_app())
 
     response = client.get("/criteria")
@@ -67,7 +53,6 @@ def test_criteria_endpoint_returns_ordered_rubric_rules(monkeypatch):
 
 
 def test_single_criterion_endpoint_returns_404_for_unknown_id(monkeypatch):
-    monkeypatch.delenv("SCI402_API_KEY", raising=False)
     client = TestClient(create_app())
 
     response = client.get("/criteria/UNKNOWN")
@@ -76,28 +61,7 @@ def test_single_criterion_endpoint_returns_404_for_unknown_id(monkeypatch):
     assert "Unknown criterion id" in response.json()["detail"]
 
 
-def test_protected_endpoints_reject_missing_api_key(monkeypatch):
-    monkeypatch.setenv("SCI402_API_KEY", "secret")
-    client = TestClient(create_app())
-
-    response = client.get("/criteria")
-
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid or missing API key."
-
-
-def test_protected_endpoints_accept_valid_api_key(monkeypatch):
-    monkeypatch.setenv("SCI402_API_KEY", "secret")
-    client = TestClient(create_app())
-
-    response = client.get("/criteria", headers={"X-API-Key": "secret"})
-
-    assert response.status_code == 200
-    assert response.json()[0]["id"] == "C1_SCIENTIFIC_BACKGROUND"
-
-
 def test_analyze_endpoint_returns_profile_and_criterion_coverage(monkeypatch):
-    monkeypatch.delenv("SCI402_API_KEY", raising=False)
     client = TestClient(create_app())
 
     response = client.post(
@@ -119,8 +83,6 @@ def test_analyze_endpoint_returns_profile_and_criterion_coverage(monkeypatch):
 
 
 def test_chat_endpoint_returns_model_content(monkeypatch):
-    monkeypatch.delenv("SCI402_API_KEY", raising=False)
-
     def fake_chat_completion(messages, tools=None):
         assert messages == [{"role": "user", "content": "Hello!"}]
         assert tools is None
@@ -139,7 +101,6 @@ def test_chat_endpoint_returns_model_content(monkeypatch):
 
 
 def test_feedback_endpoint_returns_mode_analysis_and_feedback(monkeypatch):
-    monkeypatch.delenv("SCI402_API_KEY", raising=False)
     captured_request = {}
 
     def fake_chat_completion(messages, tools=None):
@@ -179,8 +140,6 @@ def test_feedback_endpoint_returns_mode_analysis_and_feedback(monkeypatch):
 
 
 def test_feedback_endpoint_returns_503_for_missing_llm_config(monkeypatch):
-    monkeypatch.delenv("SCI402_API_KEY", raising=False)
-
     def fake_chat_completion(messages, tools=None):
         raise LLMConfigurationError("Missing SCI402_LLM_API_KEY.")
 
@@ -197,8 +156,6 @@ def test_feedback_endpoint_returns_503_for_missing_llm_config(monkeypatch):
 
 
 def test_feedback_endpoint_returns_502_for_llm_call_error(monkeypatch):
-    monkeypatch.delenv("SCI402_API_KEY", raising=False)
-
     def fake_chat_completion(messages, tools=None):
         raise LLMCallError("Model call failed.")
 

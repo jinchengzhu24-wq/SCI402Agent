@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import hmac
-import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, status
+from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -19,7 +17,6 @@ from .llm_client import LLMCallError, LLMConfigurationError, chat_completion
 from .rules import CRITERIA_ORDER, RUBRIC_RULES, get_criterion, validate_rubric_rules
 
 
-API_KEY_ENV_VAR = "SCI402_API_KEY"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
@@ -100,20 +97,6 @@ class HealthResponse(BaseModel):
     criteria_count: int
 
 
-def _require_api_key(expected_api_key: str | None):
-    def dependency(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
-        if expected_api_key is None:
-            return
-
-        if x_api_key is None or not hmac.compare_digest(x_api_key, expected_api_key):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or missing API key.",
-            )
-
-    return dependency
-
-
 def _criterion_response(criterion_id: str) -> CriterionResponse:
     rule = get_criterion(criterion_id)
     return CriterionResponse(
@@ -164,7 +147,6 @@ def create_app() -> FastAPI:
     """Create and configure the SCI402 FastAPI application."""
     load_environment()
     validate_rubric_rules()
-    expected_api_key = os.getenv(API_KEY_ENV_VAR) or None
 
     app = FastAPI(
         title="SCI402 Agent API",
@@ -181,27 +163,23 @@ def create_app() -> FastAPI:
     def health() -> HealthResponse:
         return HealthResponse(status="ok", criteria_count=len(CRITERIA_ORDER))
 
-    protected_router = APIRouter(
-        dependencies=[Depends(_require_api_key(expected_api_key))]
-    )
-
-    @protected_router.get("/criteria", response_model=list[CriterionResponse])
+    @app.get("/criteria", response_model=list[CriterionResponse])
     def list_criteria() -> list[CriterionResponse]:
         return [_criterion_response(criterion_id) for criterion_id in CRITERIA_ORDER]
 
-    @protected_router.get("/criteria/{criterion_id}", response_model=CriterionResponse)
+    @app.get("/criteria/{criterion_id}", response_model=CriterionResponse)
     def read_criterion(criterion_id: str) -> CriterionResponse:
         try:
             return _criterion_response(criterion_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    @protected_router.post("/analyze", response_model=AnalyzeResponse)
+    @app.post("/analyze", response_model=AnalyzeResponse)
     def analyze_proposal(request: AnalyzeRequest) -> AnalyzeResponse:
         profile = analyze_input(request.student_text)
         return _analyze_response_from_profile(profile)
 
-    @protected_router.post("/feedback", response_model=FeedbackResponse)
+    @app.post("/feedback", response_model=FeedbackResponse)
     def feedback(request: AnalyzeRequest) -> FeedbackResponse:
         profile = analyze_input(request.student_text)
         mode = select_mode(profile)
@@ -230,7 +208,7 @@ def create_app() -> FastAPI:
             feedback=response.get("content") or "",
         )
 
-    @protected_router.post("/chat", response_model=ChatResponse)
+    @app.post("/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:
         try:
             response = chat_completion(
@@ -250,7 +228,6 @@ def create_app() -> FastAPI:
 
         return ChatResponse(**response)
 
-    app.include_router(protected_router)
     return app
 
 
