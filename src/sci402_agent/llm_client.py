@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .env import load_environment
+
 
 DEFAULT_LLM_API_BASE = "https://aiagent.xjtlu.edu.cn/api/aigw/v1"
 DEFAULT_LLM_MODEL_ID = "d6sfcv1u680jfadtkgn0"
@@ -37,6 +39,7 @@ ArkClientFactory = Callable[[LLMConfig], Any]
 
 def load_llm_config() -> LLMConfig:
     """Load model configuration from environment variables."""
+    load_environment()
     api_key = os.getenv(LLM_API_KEY_ENV_VAR)
     if not api_key:
         raise LLMConfigurationError(

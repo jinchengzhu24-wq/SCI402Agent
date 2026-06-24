@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import hmac
 import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, status
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .env import load_environment
+from .feedback_agent import build_feedback_messages, select_mode
 from .input_analyzer import analyze_input
 from .llm_client import LLMCallError, LLMConfigurationError, chat_completion
 from .rules import CRITERIA_ORDER, RUBRIC_RULES, get_criterion, validate_rubric_rules
 
 
 API_KEY_ENV_VAR = "SCI402_API_KEY"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 class AnalyzeRequest(BaseModel):
@@ -79,6 +85,14 @@ class AnalyzeResponse(BaseModel):
     criterion_coverage: list[CriterionCoverage]
 
 
+class FeedbackResponse(BaseModel):
+    """Adaptive SCI402 tutor feedback generated from rubric-bound prompts."""
+
+    mode: str
+    analysis: AnalyzeResponse
+    feedback: str
+
+
 class HealthResponse(BaseModel):
     """Simple service health payload."""
 
@@ -132,6 +146,13 @@ def _criterion_coverage(profile: dict[str, Any]) -> list[CriterionCoverage]:
     return coverage
 
 
+def _analyze_response_from_profile(profile: dict[str, Any]) -> AnalyzeResponse:
+    return AnalyzeResponse(
+        **profile,
+        criterion_coverage=_criterion_coverage(profile),
+    )
+
+
 def _message_to_dict(message: ChatMessage) -> dict[str, Any]:
     if hasattr(message, "model_dump"):
         return message.model_dump()
@@ -141,6 +162,7 @@ def _message_to_dict(message: ChatMessage) -> dict[str, Any]:
 
 def create_app() -> FastAPI:
     """Create and configure the SCI402 FastAPI application."""
+    load_environment()
     validate_rubric_rules()
     expected_api_key = os.getenv(API_KEY_ENV_VAR) or None
 
@@ -149,6 +171,11 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="Rule-based API for SCI402 proposal rubric analysis.",
     )
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/", response_class=FileResponse)
+    def index() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -172,9 +199,35 @@ def create_app() -> FastAPI:
     @protected_router.post("/analyze", response_model=AnalyzeResponse)
     def analyze_proposal(request: AnalyzeRequest) -> AnalyzeResponse:
         profile = analyze_input(request.student_text)
-        return AnalyzeResponse(
-            **profile,
-            criterion_coverage=_criterion_coverage(profile),
+        return _analyze_response_from_profile(profile)
+
+    @protected_router.post("/feedback", response_model=FeedbackResponse)
+    def feedback(request: AnalyzeRequest) -> FeedbackResponse:
+        profile = analyze_input(request.student_text)
+        mode = select_mode(profile)
+        messages = build_feedback_messages(
+            student_text=request.student_text,
+            input_profile=profile,
+            selected_mode=mode,
+        )
+
+        try:
+            response = chat_completion(messages=messages)
+        except LLMConfigurationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from exc
+        except LLMCallError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(exc),
+            ) from exc
+
+        return FeedbackResponse(
+            mode=mode,
+            analysis=_analyze_response_from_profile(profile),
+            feedback=response.get("content") or "",
         )
 
     @protected_router.post("/chat", response_model=ChatResponse)

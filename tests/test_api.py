@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from sci402_agent.api import create_app
+from sci402_agent.feedback_agent import MODE_2_STRUCTURED_GUIDANCE
+from sci402_agent.llm_client import LLMCallError, LLMConfigurationError
 
 
 def test_health_endpoint_does_not_require_api_key(monkeypatch):
@@ -28,6 +30,27 @@ def test_health_endpoint_reports_service_status(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "criteria_count": 5}
+
+
+def test_index_page_is_served(monkeypatch):
+    monkeypatch.delenv("SCI402_API_KEY", raising=False)
+    client = TestClient(create_app())
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "SCI402 Feedback Agent" in response.text
+
+
+def test_static_app_script_is_served(monkeypatch):
+    monkeypatch.delenv("SCI402_API_KEY", raising=False)
+    client = TestClient(create_app())
+
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert "runFeedback" in response.text
 
 
 def test_criteria_endpoint_returns_ordered_rubric_rules(monkeypatch):
@@ -113,3 +136,79 @@ def test_chat_endpoint_returns_model_content(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"content": "Hi there.", "tool_calls": []}
+
+
+def test_feedback_endpoint_returns_mode_analysis_and_feedback(monkeypatch):
+    monkeypatch.delenv("SCI402_API_KEY", raising=False)
+    captured_request = {}
+
+    def fake_chat_completion(messages, tools=None):
+        captured_request["messages"] = messages
+        assert tools is None
+        return {
+            "content": "Mode: MODE_2_STRUCTURED_GUIDANCE\nFeedback: Add workflow details.",
+            "tool_calls": [],
+        }
+
+    monkeypatch.setattr("sci402_agent.api.chat_completion", fake_chat_completion)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/feedback",
+        json={
+            "student_text": (
+                "My project will use a regression model with input features "
+                "and an output target for a dataset, but the workflow and "
+                "validation are not planned yet."
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == MODE_2_STRUCTURED_GUIDANCE
+    assert payload["analysis"]["matched_criteria"] == [
+        "C2_AI_ML_FORMULATION",
+        "C3_METHODOLOGY_WORKFLOW",
+    ]
+    assert payload["feedback"] == (
+        "Mode: MODE_2_STRUCTURED_GUIDANCE\nFeedback: Add workflow details."
+    )
+    assert captured_request["messages"][0]["role"] == "system"
+    assert "SCI402 Rubric Rules" in captured_request["messages"][0]["content"]
+
+
+def test_feedback_endpoint_returns_503_for_missing_llm_config(monkeypatch):
+    monkeypatch.delenv("SCI402_API_KEY", raising=False)
+
+    def fake_chat_completion(messages, tools=None):
+        raise LLMConfigurationError("Missing SCI402_LLM_API_KEY.")
+
+    monkeypatch.setattr("sci402_agent.api.chat_completion", fake_chat_completion)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/feedback",
+        json={"student_text": "This is a proposal draft with enough words to analyze."},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Missing SCI402_LLM_API_KEY."
+
+
+def test_feedback_endpoint_returns_502_for_llm_call_error(monkeypatch):
+    monkeypatch.delenv("SCI402_API_KEY", raising=False)
+
+    def fake_chat_completion(messages, tools=None):
+        raise LLMCallError("Model call failed.")
+
+    monkeypatch.setattr("sci402_agent.api.chat_completion", fake_chat_completion)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/feedback",
+        json={"student_text": "This is a proposal draft with enough words to analyze."},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Model call failed."

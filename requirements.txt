@@ -1,4 +1,5 @@
 fastapi
 uvicorn
 volcengine-python-sdk[ark]
+python-dotenv
 pytest

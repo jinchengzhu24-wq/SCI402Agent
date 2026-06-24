@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SCI402 Feedback Agent</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="SCI402 feedback workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">SCI402</p>
+            <h1>Rubric Feedback Agent</h1>
+          </div>
+          <div class="status-pill" id="serviceStatus">Ready</div>
+        </header>
+
+        <div class="tool-grid">
+          <section class="input-panel" aria-labelledby="inputTitle">
+            <div class="panel-heading">
+              <h2 id="inputTitle">Student Draft</h2>
+              <button class="ghost-button" id="sampleButton" type="button">Sample</button>
+            </div>
+
+            <label class="field-label" for="apiKeyInput">API key header</label>
+            <input
+              id="apiKeyInput"
+              class="api-key-input"
+              type="password"
+              autocomplete="off"
+              placeholder="Only needed when SCI402_API_KEY is enabled"
+            >
+
+            <label class="field-label" for="studentText">Proposal text</label>
+            <textarea
+              id="studentText"
+              spellcheck="true"
+              placeholder="Paste a SCI402 proposal section or type help."
+            ></textarea>
+
+            <div class="actions">
+              <button id="analyzeButton" class="secondary-button" type="button">Analyze</button>
+              <button id="feedbackButton" class="primary-button" type="button">Generate feedback</button>
+              <button id="clearButton" class="icon-button" type="button" title="Clear input">Clear</button>
+            </div>
+          </section>
+
+          <section class="results-panel" aria-label="Rubric results">
+            <div class="summary-strip">
+              <div>
+                <span class="metric-label">Mode</span>
+                <strong id="modeValue">Not selected</strong>
+              </div>
+              <div>
+                <span class="metric-label">Words</span>
+                <strong id="wordCount">0</strong>
+              </div>
+              <div>
+                <span class="metric-label">Coverage</span>
+                <strong id="coverageValue">0%</strong>
+              </div>
+            </div>
+
+            <div class="coverage-track" aria-hidden="true">
+              <div class="coverage-fill" id="coverageFill"></div>
+            </div>
+
+            <div class="section-heading">
+              <h2>Rubric Check</h2>
+            </div>
+            <div class="criteria-list" id="criteriaList">
+              <p class="empty-state">Run analysis to see the five SCI402 rubric areas.</p>
+            </div>
+
+            <div class="section-heading feedback-heading">
+              <h2>Feedback</h2>
+            </div>
+            <pre class="feedback-box" id="feedbackBox">Generate feedback to see the tutor response.</pre>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
