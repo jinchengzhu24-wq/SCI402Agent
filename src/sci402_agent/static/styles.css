@@ -240,7 +240,7 @@ textarea:focus {
 
 .summary-strip {
   display: grid;
-  grid-template-columns: 1.1fr 0.7fr 0.8fr;
+  grid-template-columns: 1.05fr 0.62fr 0.76fr 0.76fr;
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -290,6 +290,61 @@ textarea:focus {
   margin-top: 12px;
 }
 
+.structure-box {
+  margin-bottom: 18px;
+}
+
+.grade-band {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfc;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.structure-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.check-pill {
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.check-pill.is-ok {
+  background: #e3f2ed;
+  color: var(--primary-dark);
+}
+
+.check-pill.is-warning {
+  background: #fff0dc;
+  color: var(--warn);
+}
+
+.warning-list,
+.blocker-list {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: var(--warn);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.structure-ok {
+  margin: 10px 0 0;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .criterion-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -300,10 +355,33 @@ textarea:focus {
   background: #fbfdfc;
 }
 
+.criterion-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+
+.criterion-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
 .criterion-title {
   display: block;
   margin-bottom: 5px;
   font-weight: 800;
+}
+
+.criterion-level {
+  display: inline-block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .criterion-detail {
@@ -331,6 +409,49 @@ textarea:focus {
 .badge.is-missing {
   background: #fff0dc;
   color: var(--warn);
+}
+
+.score-badge {
+  min-width: 54px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.score-badge.is-excellent {
+  background: #e3f2ed;
+  color: var(--primary-dark);
+}
+
+.score-badge.is-satisfactory {
+  background: #eef4f2;
+  color: var(--primary-dark);
+}
+
+.score-badge.is-weak {
+  background: #fff0dc;
+  color: var(--warn);
+}
+
+.criterion-section {
+  margin-top: 12px;
+}
+
+.criterion-section ul {
+  margin: 5px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mini-label {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .feedback-heading {

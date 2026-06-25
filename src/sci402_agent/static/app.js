@@ -4,11 +4,18 @@ const state = {
 };
 
 const sampleDraft = [
+  "1. Scientific Background & Problem Definition",
   "My project studies temperature prediction in lithium-ion batteries.",
   "The scientific problem is that overheating can reduce battery safety and lifetime.",
+  "The research gap is the lack of fast prediction methods compared with computationally expensive traditional thermal simulations.",
+  "Experimental cycling datasets provide current, voltage, ambient temperature, and state of charge measurements.",
+  "2. AI / ML Problem Formulation",
   "I will use a regression model with input features such as current, voltage, ambient temperature, and charge rate.",
   "The output target is battery surface temperature.",
-  "I have not fully planned the preprocessing, workflow diagram, validation metrics, or risk mitigation yet.",
+  "Random Forest Regression is suitable because it can model nonlinear relationships in battery operating data.",
+  "3. Methodology and Workflow Design",
+  "Workflow diagram: Data Collection -> Data Cleaning -> Feature Engineering -> Model Training -> Validation -> Evaluation.",
+  "I have not fully planned the preprocessing, validation metrics, reproducibility, or risk mitigation yet.",
 ].join(" ");
 
 const elements = {
@@ -21,7 +28,9 @@ const elements = {
   modeValue: document.querySelector("#modeValue"),
   wordCount: document.querySelector("#wordCount"),
   coverageValue: document.querySelector("#coverageValue"),
+  scoreValue: document.querySelector("#scoreValue"),
   coverageFill: document.querySelector("#coverageFill"),
+  structureBox: document.querySelector("#structureBox"),
   criteriaList: document.querySelector("#criteriaList"),
   feedbackBox: document.querySelector("#feedbackBox"),
 };
@@ -66,10 +75,20 @@ function renderAnalysis(analysis, mode = "Not selected") {
   state.lastAnalysis = analysis;
   elements.modeValue.textContent = mode;
   elements.wordCount.textContent = String(analysis.word_count);
+  elements.scoreValue.textContent =
+    typeof analysis.estimated_total === "number"
+      ? `${analysis.estimated_total}/25`
+      : "0/25";
 
   const coverage = Math.round(analysis.coverage_ratio * 100);
   elements.coverageValue.textContent = `${coverage}%`;
   elements.coverageFill.style.width = `${coverage}%`;
+
+  renderStructure(analysis);
+  if (Array.isArray(analysis.criterion_scores)) {
+    renderCriterionScores(analysis);
+    return;
+  }
 
   elements.criteriaList.innerHTML = analysis.criterion_coverage
     .map((criterion) => {
@@ -86,6 +105,100 @@ function renderAnalysis(analysis, mode = "Not selected") {
             <p class="criterion-detail">${escapeHtml(detail)}</p>
           </div>
           <span class="badge ${badgeClass}">${badgeText}</span>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderStructure(analysis) {
+  const structure = analysis.structure_check;
+  if (!structure) {
+    elements.structureBox.innerHTML =
+      '<p class="empty-state">Run analysis to see structure checks.</p>';
+    return;
+  }
+
+  const checks = [
+    {
+      label: `At least ${structure.required_word_count} words`,
+      ok: structure.meets_word_requirement,
+    },
+    {
+      label: "Required sections",
+      ok: structure.missing_sections.length === 0 && structure.sections_in_order,
+    },
+    {
+      label: "Workflow diagram",
+      ok: structure.has_workflow_diagram,
+    },
+  ];
+  const warningHtml = structure.warnings.length
+    ? `<ul class="warning-list">${structure.warnings
+        .map((warning) => `<li>${escapeHtml(warning)}</li>`)
+        .join("")}</ul>`
+    : '<p class="structure-ok">No structure warnings detected.</p>';
+
+  elements.structureBox.innerHTML = `
+    <div class="grade-band">${escapeHtml(analysis.grade_band || "No grade band")}</div>
+    <div class="structure-checks">
+      ${checks
+        .map(
+          (check) => `
+            <span class="check-pill ${check.ok ? "is-ok" : "is-warning"}">
+              ${check.ok ? "Pass" : "Check"}: ${escapeHtml(check.label)}
+            </span>
+          `
+        )
+        .join("")}
+    </div>
+    ${warningHtml}
+  `;
+}
+
+function renderCriterionScores(analysis) {
+  elements.criteriaList.innerHTML = analysis.criterion_scores
+    .map((criterion) => {
+      const scoreClass =
+        criterion.score_0_to_5 >= 5
+          ? "is-excellent"
+          : criterion.score_0_to_5 >= 3
+            ? "is-satisfactory"
+            : "is-weak";
+      const evidence = criterion.evidence.length
+        ? criterion.evidence
+        : ["No direct evidence found."];
+      const missing = criterion.missing_items.length
+        ? criterion.missing_items
+        : ["No major missing item detected."];
+      const blockers = criterion.blocking_flags.length
+        ? `<ul class="blocker-list">${criterion.blocking_flags
+            .map((flag) => `<li>${escapeHtml(flag)}</li>`)
+            .join("")}</ul>`
+        : "";
+
+      return `
+        <article class="criterion-card">
+          <div class="criterion-card-head">
+            <div>
+              <span class="criterion-title">${escapeHtml(criterion.title)}</span>
+              <span class="criterion-level">${escapeHtml(criterion.level)}</span>
+            </div>
+            <span class="score-badge ${scoreClass}">${criterion.score_0_to_5}/5</span>
+          </div>
+          <div class="criterion-section">
+            <span class="mini-label">Evidence</span>
+            <ul>
+              ${evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+            </ul>
+          </div>
+          <div class="criterion-section">
+            <span class="mini-label">Missing checklist</span>
+            <ul>
+              ${missing.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+            </ul>
+          </div>
+          ${blockers}
         </article>
       `;
     })
@@ -158,7 +271,10 @@ function clearWorkspace() {
   elements.modeValue.textContent = "Not selected";
   elements.wordCount.textContent = "0";
   elements.coverageValue.textContent = "0%";
+  elements.scoreValue.textContent = "0/25";
   elements.coverageFill.style.width = "0%";
+  elements.structureBox.innerHTML =
+    '<p class="empty-state">Run analysis to see structure checks.</p>';
   elements.criteriaList.innerHTML =
     '<p class="empty-state">Run analysis to see the five SCI402 rubric areas.</p>';
   renderFeedback("Generate feedback to see the tutor response.");

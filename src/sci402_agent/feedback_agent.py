@@ -27,6 +27,9 @@ def select_mode(input_profile: dict[str, Any]) -> str:
     ):
         return MODE_1_SUPPORTIVE_INQUIRY
 
+    if input_profile.get("estimated_total", 0) >= 20:
+        return MODE_3_EXPERT_CHALLENGE
+
     matched_keywords = input_profile["matched_keywords"]
     has_expert_coverage = input_profile["coverage_ratio"] >= 0.8 and all(
         matched_keywords.get(criterion_id)
@@ -79,6 +82,16 @@ def _format_rubric_rules() -> str:
         lines.extend(f"- {item}" for item in rule["checklist"])
         lines.append(f"Missing feedback: {rule['missing_feedback']}")
         lines.append(f"Blocking rule: {rule['blocking_rule']}")
+        lines.append("Scoring items:")
+        lines.extend(
+            f"- {item['id']}: {item['label']}"
+            for item in rule.get("scoring_items", [])
+        )
+        lines.append("Score cap rules:")
+        lines.extend(
+            f"- {cap_rule['message']}"
+            for cap_rule in rule.get("cap_rules", [])
+        )
         lines.append(f"Keywords: {', '.join(rule['keywords'])}")
 
     return "\n".join(lines)
@@ -98,10 +111,11 @@ def _mode_instruction(selected_mode: str) -> str:
     if selected_mode == MODE_3_EXPERT_CHALLENGE:
         return (
             "Mode Instruction: MODE_3_EXPERT_CHALLENGE\n"
-            "The student has covered most rubric areas. Provide advanced "
-            "challenge questions and improvement advice about limitations, "
-            "edge cases, experimental validation, failure points, and risk "
-            "mitigation. Do not rewrite the proposal."
+            "The student has covered most rubric areas or has a high formative "
+            "score estimate. Provide advanced challenge questions and "
+            "improvement advice about limitations, edge cases, experimental "
+            "validation, failure points, and risk mitigation. Do not rewrite "
+            "the proposal."
         )
 
     return (
@@ -126,15 +140,19 @@ def _output_format(selected_mode: str) -> str:
     return (
         "Required Output Format:\n"
         f"Mode: {selected_mode}\n"
-        "Rubric Check:\n"
-        "- C1 Scientific Background: <Complete / Partially complete / Missing>\n"
-        "- C2 AI/ML Formulation: <Complete / Partially complete / Missing>\n"
-        "- C3 Methodology: <Complete / Partially complete / Missing>\n"
-        "- C4 Scientific Integration: <Complete / Partially complete / Missing>\n"
-        "- C5 Feasibility/Ethics/Risk: <Complete / Partially complete / Missing>\n"
-        "Feedback:\n"
-        "1. <specific rubric-based improvement>\n"
-        "2. <specific rubric-based improvement>\n"
+        "Score summary:\n"
+        "- Estimated total: <score>/25 (<grade band>)\n"
+        "- Structure warnings: <brief list or none>\n"
+        "Rubric diagnosis:\n"
+        "- C1 Scientific Background: <score>/5 - <status> - Evidence: <quote or 'not found'>\n"
+        "- C2 AI/ML Formulation: <score>/5 - <status> - Evidence: <quote or 'not found'>\n"
+        "- C3 Methodology: <score>/5 - <status> - Evidence: <quote or 'not found'>\n"
+        "- C4 Scientific Integration: <score>/5 - <status> - Evidence: <quote or 'not found'>\n"
+        "- C5 Feasibility/Ethics/Risk: <score>/5 - <status> - Evidence: <quote or 'not found'>\n"
+        "Top 3 revisions:\n"
+        "1. <specific rubric-based revision>\n"
+        "2. <specific rubric-based revision>\n"
+        "3. <specific rubric-based revision>\n"
         "Next action:\n"
         "<the single most important revision to do next>"
     )
@@ -148,19 +166,57 @@ def _prohibited_behavior() -> str:
         "- Do not give generic praise such as \"looks good\" or \"good job\" "
         "unless all five criteria are complete.\n"
         "- Do not write the complete proposal for the student.\n"
-        "- Do not add suggestions unrelated to the SCI402 rubric."
+        "- Do not add suggestions unrelated to the SCI402 rubric.\n"
+        "- Treat numeric scores as formative estimates, not official marks.\n"
+        "- Do not mark a criterion complete unless the assessor profile gives "
+        "evidence for it."
     )
 
 
 def _format_input_profile(input_profile: dict[str, Any]) -> str:
-    return "\n".join(
-        [
-            f"word_count: {input_profile['word_count']}",
-            f"is_blank: {input_profile['is_blank']}",
-            f"is_short_input: {input_profile['is_short_input']}",
-            f"confusion_detected: {input_profile['confusion_detected']}",
-            f"matched_criteria: {', '.join(input_profile['matched_criteria']) or 'none'}",
-            f"missing_criteria: {', '.join(input_profile['missing_criteria']) or 'none'}",
-            f"coverage_ratio: {input_profile['coverage_ratio']:.2f}",
-        ]
-    )
+    lines = [
+        f"word_count: {input_profile['word_count']}",
+        f"is_blank: {input_profile['is_blank']}",
+        f"is_short_input: {input_profile['is_short_input']}",
+        f"confusion_detected: {input_profile['confusion_detected']}",
+        f"matched_criteria: {', '.join(input_profile['matched_criteria']) or 'none'}",
+        f"missing_criteria: {', '.join(input_profile['missing_criteria']) or 'none'}",
+        f"coverage_ratio: {input_profile['coverage_ratio']:.2f}",
+    ]
+
+    structure_check = input_profile.get("structure_check")
+    if structure_check:
+        detected_sections = ", ".join(
+            section["id"] for section in structure_check["detected_sections"]
+        ) or "none"
+        lines.extend(
+            [
+                f"estimated_total: {input_profile['estimated_total']}/25",
+                f"grade_band: {input_profile['grade_band']}",
+                f"meets_word_requirement: {structure_check['meets_word_requirement']}",
+                f"has_workflow_diagram: {structure_check['has_workflow_diagram']}",
+                f"detected_sections: {detected_sections}",
+                "structure_warnings: "
+                + (", ".join(structure_check["warnings"]) or "none"),
+            ]
+        )
+
+    criterion_scores = input_profile.get("criterion_scores", [])
+    if criterion_scores:
+        lines.append("criterion_scores:")
+        for score in criterion_scores:
+            evidence = score["evidence"][0] if score["evidence"] else "not found"
+            missing = "; ".join(score["missing_items"][:2]) or "none"
+            blockers = "; ".join(score["blocking_flags"]) or "none"
+            lines.append(
+                f"- {score['id']}: {score['score_0_to_5']}/5 "
+                f"({score['level']}); evidence: {evidence}; "
+                f"missing: {missing}; blockers: {blockers}"
+            )
+
+    priority_revisions = input_profile.get("priority_revisions", [])
+    if priority_revisions:
+        lines.append("priority_revisions:")
+        lines.extend(f"- {revision}" for revision in priority_revisions[:5])
+
+    return "\n".join(lines)

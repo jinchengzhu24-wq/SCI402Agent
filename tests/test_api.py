@@ -80,6 +80,11 @@ def test_analyze_endpoint_returns_profile_and_criterion_coverage(monkeypatch):
     assert payload["criterion_coverage"][1]["id"] == "C2_AI_ML_FORMULATION"
     assert payload["criterion_coverage"][1]["is_matched"] is True
     assert payload["criterion_coverage"][0]["missing_feedback"]
+    assert payload["estimated_total"] == payload["estimated_total_25"]
+    assert payload["grade_band"]
+    assert payload["structure_check"]["required_word_count"] == 3000
+    assert len(payload["criterion_scores"]) == 5
+    assert payload["priority_revisions"]
 
 
 def test_chat_endpoint_returns_model_content(monkeypatch):

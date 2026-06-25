@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 
 from .env import load_environment
 from .feedback_agent import build_feedback_messages, select_mode
-from .input_analyzer import analyze_input
 from .llm_client import LLMCallError, LLMConfigurationError, chat_completion
+from .proposal_assessor import assess_proposal
 from .rules import CRITERIA_ORDER, RUBRIC_RULES, get_criterion, validate_rubric_rules
 
 
@@ -68,6 +68,39 @@ class CriterionCoverage(BaseModel):
     missing_feedback: str | None
 
 
+class DetectedSection(BaseModel):
+    """Detected required proposal section."""
+
+    id: str
+    title: str
+    line: int
+
+
+class StructureCheck(BaseModel):
+    """Proposal-level structure checks from the SCI402 brief."""
+
+    required_word_count: int
+    meets_word_requirement: bool
+    has_workflow_diagram: bool
+    detected_sections: list[DetectedSection]
+    missing_sections: list[str]
+    sections_in_order: bool
+    warnings: list[str]
+
+
+class CriterionScore(BaseModel):
+    """Rubric-aware estimated score for one criterion."""
+
+    id: str
+    title: str
+    score_0_to_5: int
+    level: str
+    matched_items: list[str]
+    missing_items: list[str]
+    evidence: list[str]
+    blocking_flags: list[str]
+
+
 class AnalyzeResponse(BaseModel):
     """Rule-based analysis profile for student proposal text."""
 
@@ -80,6 +113,12 @@ class AnalyzeResponse(BaseModel):
     missing_criteria: list[str]
     coverage_ratio: float
     criterion_coverage: list[CriterionCoverage]
+    structure_check: StructureCheck
+    criterion_scores: list[CriterionScore]
+    estimated_total: int
+    estimated_total_25: int
+    grade_band: str
+    priority_revisions: list[str]
 
 
 class FeedbackResponse(BaseModel):
@@ -176,12 +215,12 @@ def create_app() -> FastAPI:
 
     @app.post("/analyze", response_model=AnalyzeResponse)
     def analyze_proposal(request: AnalyzeRequest) -> AnalyzeResponse:
-        profile = analyze_input(request.student_text)
+        profile = assess_proposal(request.student_text)
         return _analyze_response_from_profile(profile)
 
     @app.post("/feedback", response_model=FeedbackResponse)
     def feedback(request: AnalyzeRequest) -> FeedbackResponse:
-        profile = analyze_input(request.student_text)
+        profile = assess_proposal(request.student_text)
         mode = select_mode(profile)
         messages = build_feedback_messages(
             student_text=request.student_text,
