@@ -49,8 +49,9 @@ button:disabled {
 }
 
 .workspace {
-  width: min(1280px, 100%);
+  width: min(1480px, 100%);
   margin: 0 auto;
+  overflow-x: auto;
 }
 
 .topbar {
@@ -109,13 +110,18 @@ h2 {
 
 .tool-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 0.92fr) minmax(360px, 1.08fr);
+  grid-template-columns:
+    minmax(280px, 0.95fr)
+    minmax(320px, 1.05fr)
+    minmax(300px, 0.95fr);
   gap: 18px;
   align-items: stretch;
+  min-width: 960px;
 }
 
 .input-panel,
-.results-panel {
+.results-panel,
+.feedback-panel {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -132,6 +138,13 @@ h2 {
 
 .results-panel {
   padding: 20px;
+}
+
+.feedback-panel {
+  display: flex;
+  min-height: 650px;
+  padding: 20px;
+  flex-direction: column;
 }
 
 .panel-heading,
@@ -321,21 +334,78 @@ textarea:focus {
 }
 
 .feedback-heading {
-  margin-top: 20px;
+  margin-top: 0;
 }
 
 .feedback-box {
-  min-height: 190px;
+  flex: 1;
+  min-height: 0;
   margin: 12px 0 0;
   padding: 14px;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #101614;
-  color: #eaf3ef;
-  white-space: pre-wrap;
-  word-break: break-word;
+  background: #fbfdfc;
+  color: var(--ink);
+  font-family: inherit;
   line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.feedback-box > :first-child {
+  margin-top: 0;
+}
+
+.feedback-box > :last-child {
+  margin-bottom: 0;
+}
+
+.feedback-box h3,
+.feedback-box h4,
+.feedback-box h5 {
+  margin: 16px 0 8px;
+  color: var(--ink);
+  line-height: 1.25;
+}
+
+.feedback-box h3 {
+  font-size: 18px;
+}
+
+.feedback-box h4,
+.feedback-box h5 {
+  font-size: 16px;
+}
+
+.feedback-box p,
+.feedback-box ul,
+.feedback-box ol {
+  margin: 0 0 12px;
+}
+
+.feedback-box ul,
+.feedback-box ol {
+  padding-left: 22px;
+}
+
+.feedback-box li + li {
+  margin-top: 6px;
+}
+
+.feedback-box code {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--surface-soft);
+  color: var(--primary-dark);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 0.92em;
+}
+
+.feedback-box a {
+  color: var(--primary);
+  font-weight: 800;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
 .empty-state {
@@ -347,7 +417,7 @@ textarea:focus {
   background: #fbfdfc;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 940px) {
   .app-shell {
     padding: 16px;
   }
@@ -357,13 +427,8 @@ textarea:focus {
     flex-direction: column;
   }
 
-  .tool-grid,
   .summary-strip {
     grid-template-columns: 1fr;
-  }
-
-  .input-panel {
-    min-height: auto;
   }
 
   textarea {

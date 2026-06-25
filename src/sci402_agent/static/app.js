@@ -93,7 +93,9 @@ function renderAnalysis(analysis, mode = "Not selected") {
 }
 
 function renderFeedback(text) {
-  elements.feedbackBox.textContent = text || "No feedback content returned.";
+  elements.feedbackBox.innerHTML = renderMarkdown(
+    text || "No feedback content returned."
+  );
 }
 
 function requestBody() {
@@ -171,6 +173,112 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll("`", "&#096;");
+}
+
+function sanitizeUrl(value) {
+  const url = String(value).replaceAll("&amp;", "&").trim();
+  if (/^(https?:|mailto:)/i.test(url)) {
+    return url;
+  }
+  return "";
+}
+
+function renderInlineMarkdown(value) {
+  const codeSpans = [];
+  let html = escapeHtml(value).replace(/`([^`]+)`/g, (_match, code) => {
+    const index = codeSpans.length;
+    codeSpans.push(`<code>${code}</code>`);
+    return `\u0000CODE${index}\u0000`;
+  });
+
+  html = html
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match, label, url) => {
+      const safeUrl = sanitizeUrl(url);
+      if (!safeUrl) {
+        return `${label} (${url})`;
+      }
+      return `<a href="${escapeAttribute(safeUrl)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    })
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+
+  codeSpans.forEach((codeHtml, index) => {
+    html = html.replaceAll(`\u0000CODE${index}\u0000`, codeHtml);
+  });
+
+  return html;
+}
+
+function renderMarkdown(markdown) {
+  const lines = String(markdown).replace(/\r\n?/g, "\n").split("\n");
+  const blocks = [];
+  let paragraphLines = [];
+  let listItems = [];
+  let isOrderedList = false;
+
+  function flushParagraph() {
+    if (!paragraphLines.length) {
+      return;
+    }
+    blocks.push(`<p>${renderInlineMarkdown(paragraphLines.join(" "))}</p>`);
+    paragraphLines = [];
+  }
+
+  function flushList() {
+    if (!listItems.length) {
+      return;
+    }
+    const tag = isOrderedList ? "ol" : "ul";
+    blocks.push(`<${tag}>${listItems.join("")}</${tag}>`);
+    listItems = [];
+  }
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length + 2;
+      blocks.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      return;
+    }
+
+    const unorderedItem = trimmed.match(/^[-*]\s+(.+)$/);
+    const orderedItem = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (unorderedItem || orderedItem) {
+      flushParagraph();
+      const nextIsOrdered = Boolean(orderedItem);
+      if (listItems.length && isOrderedList !== nextIsOrdered) {
+        flushList();
+      }
+      isOrderedList = nextIsOrdered;
+      listItems.push(
+        `<li>${renderInlineMarkdown(
+          unorderedItem ? unorderedItem[1] : orderedItem[1]
+        )}</li>`
+      );
+      return;
+    }
+
+    flushList();
+    paragraphLines.push(trimmed);
+  });
+
+  flushParagraph();
+  flushList();
+
+  return blocks.join("");
 }
 
 elements.analyzeButton.addEventListener("click", () => {
