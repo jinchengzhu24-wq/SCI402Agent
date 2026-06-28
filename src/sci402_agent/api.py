@@ -13,6 +13,11 @@ from pydantic import BaseModel, Field
 from .env import load_environment
 from .feedback_agent import build_feedback_messages, select_mode
 from .llm_client import LLMCallError, LLMConfigurationError, chat_completion
+from .llm_rubric_scorer import (
+    LLMScoringValidationError,
+    fallback_scoring_response,
+    score_with_llm,
+)
 from .proposal_assessor import assess_proposal
 from .rules import CRITERIA_ORDER, RUBRIC_RULES, get_criterion, validate_rubric_rules
 
@@ -104,6 +109,7 @@ class CriterionScore(BaseModel):
 class AnalyzeResponse(BaseModel):
     """Rule-based analysis profile for student proposal text."""
 
+    suggested_feedback_mode: str
     word_count: int
     is_blank: bool
     is_short_input: bool
@@ -127,6 +133,49 @@ class FeedbackResponse(BaseModel):
     mode: str
     analysis: AnalyzeResponse
     feedback: str
+
+
+class RawLLMScore(BaseModel):
+    """One raw score returned by the model before local guardrail validation."""
+
+    id: str
+    score_0_to_5: int
+    evidence: list[str]
+    missing_items: list[str]
+    rationale: str
+    confidence: str
+    cap_applied: bool
+
+
+class ValidatedLLMScore(BaseModel):
+    """One LLM score after local cap and evidence validation."""
+
+    id: str
+    title: str
+    score_0_to_5: int
+    level: str
+    evidence: list[str]
+    missing_items: list[str]
+    rationale: str
+    confidence: str
+    cap_applied: bool
+    blocking_flags: list[str]
+    invalid_evidence: list[str]
+    adjustments: list[str]
+    source: str
+
+
+class LLMScoreResponse(BaseModel):
+    """Hybrid scoring payload using LLM judgment with local guardrails."""
+
+    local_analysis: AnalyzeResponse
+    llm_scores: list[RawLLMScore]
+    validated_scores: list[ValidatedLLMScore]
+    final_total: int
+    final_total_25: int
+    grade_band: str
+    source: str
+    fallback_reason: str | None
 
 
 class HealthResponse(BaseModel):
@@ -171,6 +220,7 @@ def _criterion_coverage(profile: dict[str, Any]) -> list[CriterionCoverage]:
 def _analyze_response_from_profile(profile: dict[str, Any]) -> AnalyzeResponse:
     return AnalyzeResponse(
         **profile,
+        suggested_feedback_mode=select_mode(profile),
         criterion_coverage=_criterion_coverage(profile),
     )
 
@@ -246,6 +296,17 @@ def create_app() -> FastAPI:
             analysis=_analyze_response_from_profile(profile),
             feedback=response.get("content") or "",
         )
+
+    @app.post("/llm-score", response_model=LLMScoreResponse)
+    def llm_score(request: AnalyzeRequest) -> LLMScoreResponse:
+        profile = assess_proposal(request.student_text)
+        try:
+            payload = score_with_llm(request.student_text, profile)
+        except (LLMConfigurationError, LLMCallError, LLMScoringValidationError) as exc:
+            payload = fallback_scoring_response(profile, str(exc))
+
+        payload["local_analysis"] = _analyze_response_from_profile(profile)
+        return LLMScoreResponse(**payload)
 
     @app.post("/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:

@@ -14,7 +14,16 @@
             <p class="eyebrow">SCI402</p>
             <h1>Rubric Feedback Agent</h1>
           </div>
-          <div class="status-pill" id="serviceStatus">Ready</div>
+          <div class="topbar-actions">
+            <button
+              class="secondary-button help-button"
+              id="helpButton"
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="helpModal"
+            >Info</button>
+            <div class="status-pill" id="serviceStatus">Ready</div>
+          </div>
         </header>
 
         <div class="tool-grid">
@@ -33,6 +42,7 @@
 
             <div class="actions">
               <button id="analyzeButton" class="secondary-button" type="button">Analyze</button>
+              <button id="scoreButton" class="secondary-button" type="button">AI score</button>
               <button id="feedbackButton" class="primary-button" type="button">Generate feedback</button>
               <button id="clearButton" class="icon-button" type="button" title="Clear input">Clear</button>
             </div>
@@ -41,8 +51,12 @@
           <section class="results-panel" aria-label="Rubric results">
             <div class="summary-strip">
               <div>
-                <span class="metric-label">Mode</span>
-                <strong id="modeValue">Not selected</strong>
+                <span class="metric-label">Feedback style</span>
+                <strong id="feedbackStyleValue">Not selected</strong>
+              </div>
+              <div>
+                <span class="metric-label">Score source</span>
+                <strong id="scoreSourceValue">Not scored</strong>
               </div>
               <div>
                 <span class="metric-label">Words</span>
@@ -83,6 +97,36 @@
         </div>
       </section>
     </main>
+
+    <div class="modal-overlay" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle" hidden>
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2 id="helpModalTitle">Analysis Modes</h2>
+          <button class="icon-button" id="helpCloseButton" type="button" aria-label="Close explanation">Close</button>
+        </div>
+
+        <div class="modal-content">
+          <section>
+            <h3>Analysis buttons</h3>
+            <p><strong>Analyze</strong> runs the local SCI402 proposal rubric check. It is fast and does not call the LLM.</p>
+            <p><strong>AI score</strong> asks the LLM to judge rubric quality, then applies local guardrails such as cap rules and evidence checks.</p>
+            <p><strong>Generate feedback</strong> produces tutor-style revision feedback using the selected feedback style.</p>
+          </section>
+
+          <section>
+            <h3>Feedback style modes</h3>
+            <p><strong>Supportive inquiry</strong> is used for blank, very short, or confused drafts. It asks one low-pressure question to help the student start.</p>
+            <p><strong>Structured guidance</strong> is used for incomplete drafts. It gives concrete rubric-based gaps and next revision steps.</p>
+            <p><strong>Expert challenge</strong> is used for stronger drafts. It pushes on limitations, validation, scientific interpretation, and risk mitigation.</p>
+          </section>
+
+          <section>
+            <h3>Score source</h3>
+            <p><strong>Local rules</strong> means scores come from the deterministic rubric assessor. <strong>AI-assisted</strong> means the LLM judged the draft and the local validator checked the result. <strong>Local fallback</strong> means AI scoring was unavailable or invalid, so the app kept the local score.</p>
+          </section>
+        </div>
+      </div>
+    </div>
 
     <script src="/static/app.js" defer></script>
   </body>

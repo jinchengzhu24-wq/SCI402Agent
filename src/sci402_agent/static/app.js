@@ -21,11 +21,16 @@ const sampleDraft = [
 const elements = {
   studentText: document.querySelector("#studentText"),
   analyzeButton: document.querySelector("#analyzeButton"),
+  scoreButton: document.querySelector("#scoreButton"),
   feedbackButton: document.querySelector("#feedbackButton"),
   clearButton: document.querySelector("#clearButton"),
   sampleButton: document.querySelector("#sampleButton"),
+  helpButton: document.querySelector("#helpButton"),
+  helpModal: document.querySelector("#helpModal"),
+  helpCloseButton: document.querySelector("#helpCloseButton"),
   serviceStatus: document.querySelector("#serviceStatus"),
-  modeValue: document.querySelector("#modeValue"),
+  feedbackStyleValue: document.querySelector("#feedbackStyleValue"),
+  scoreSourceValue: document.querySelector("#scoreSourceValue"),
   wordCount: document.querySelector("#wordCount"),
   coverageValue: document.querySelector("#coverageValue"),
   scoreValue: document.querySelector("#scoreValue"),
@@ -57,6 +62,7 @@ async function postJson(path, body) {
 function setBusy(isBusy, label = "Ready") {
   state.busy = isBusy;
   elements.analyzeButton.disabled = isBusy;
+  elements.scoreButton.disabled = isBusy;
   elements.feedbackButton.disabled = isBusy;
   elements.sampleButton.disabled = isBusy;
   elements.clearButton.disabled = isBusy;
@@ -71,9 +77,38 @@ function setErrorStatus(message) {
   elements.serviceStatus.classList.add("is-error");
 }
 
-function renderAnalysis(analysis, mode = "Not selected") {
+function openHelpModal() {
+  elements.helpModal.hidden = false;
+  document.body.classList.add("modal-open");
+  elements.helpCloseButton.focus();
+}
+
+function closeHelpModal() {
+  if (elements.helpModal.hidden) {
+    return;
+  }
+  elements.helpModal.hidden = true;
+  document.body.classList.remove("modal-open");
+  elements.helpButton.focus();
+}
+
+function formatFeedbackStyle(mode) {
+  const labels = {
+    MODE_1_SUPPORTIVE_INQUIRY: "Supportive inquiry",
+    MODE_2_STRUCTURED_GUIDANCE: "Structured guidance",
+    MODE_3_EXPERT_CHALLENGE: "Expert challenge",
+  };
+  return labels[mode] || mode || "Not selected";
+}
+
+function renderAnalysis(analysis, { feedbackStyle = null, scoreSource = "Local rules" } = {}) {
   state.lastAnalysis = analysis;
-  elements.modeValue.textContent = mode;
+  const nextFeedbackStyle =
+    feedbackStyle === null ? analysis.suggested_feedback_mode : feedbackStyle;
+  if (nextFeedbackStyle) {
+    elements.feedbackStyleValue.textContent = formatFeedbackStyle(nextFeedbackStyle);
+  }
+  elements.scoreSourceValue.textContent = scoreSource;
   elements.wordCount.textContent = String(analysis.word_count);
   elements.scoreValue.textContent =
     typeof analysis.estimated_total === "number"
@@ -157,7 +192,8 @@ function renderStructure(analysis) {
 }
 
 function renderCriterionScores(analysis) {
-  elements.criteriaList.innerHTML = analysis.criterion_scores
+  const scores = analysis.validated_scores || analysis.criterion_scores || [];
+  elements.criteriaList.innerHTML = scores
     .map((criterion) => {
       const scoreClass =
         criterion.score_0_to_5 >= 5
@@ -176,16 +212,52 @@ function renderCriterionScores(analysis) {
             .map((flag) => `<li>${escapeHtml(flag)}</li>`)
             .join("")}</ul>`
         : "";
+      const rationale = criterion.rationale
+        ? `
+          <div class="criterion-section">
+            <span class="mini-label">AI rationale</span>
+            <p class="criterion-detail">${escapeHtml(criterion.rationale)}</p>
+          </div>
+        `
+        : "";
+      const confidence = criterion.confidence
+        ? `<span class="criterion-level">Confidence: ${escapeHtml(criterion.confidence)}</span>`
+        : `<span class="criterion-level">${escapeHtml(criterion.level)}</span>`;
+      const invalidEvidence = criterion.invalid_evidence?.length
+        ? `
+          <div class="criterion-section">
+            <span class="mini-label">Invalid evidence</span>
+            <ul>
+              ${criterion.invalid_evidence
+                .map((item) => `<li>${escapeHtml(item)}</li>`)
+                .join("")}
+            </ul>
+          </div>
+        `
+        : "";
+      const adjustments = criterion.adjustments?.length
+        ? `
+          <div class="criterion-section">
+            <span class="mini-label">Rule guardrails</span>
+            <ul>
+              ${criterion.adjustments
+                .map((item) => `<li>${escapeHtml(item)}</li>`)
+                .join("")}
+            </ul>
+          </div>
+        `
+        : "";
 
       return `
         <article class="criterion-card">
           <div class="criterion-card-head">
             <div>
               <span class="criterion-title">${escapeHtml(criterion.title)}</span>
-              <span class="criterion-level">${escapeHtml(criterion.level)}</span>
+              ${confidence}
             </div>
             <span class="score-badge ${scoreClass}">${criterion.score_0_to_5}/5</span>
           </div>
+          ${rationale}
           <div class="criterion-section">
             <span class="mini-label">Evidence</span>
             <ul>
@@ -198,6 +270,8 @@ function renderCriterionScores(analysis) {
               ${missing.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
             </ul>
           </div>
+          ${invalidEvidence}
+          ${adjustments}
           ${blockers}
         </article>
       `;
@@ -243,7 +317,10 @@ async function runFeedback() {
   setBusy(true, "Generating");
   try {
     const payload = await postJson("/feedback", requestBody());
-    renderAnalysis(payload.analysis, payload.mode);
+    renderAnalysis(payload.analysis, {
+      feedbackStyle: payload.mode,
+      scoreSource: "Local rules",
+    });
     renderFeedback(payload.feedback);
     setBusy(false, "Ready");
   } catch (error) {
@@ -265,10 +342,50 @@ async function runFeedback() {
   }
 }
 
+async function runLLMScore() {
+  setBusy(true, "AI scoring");
+  try {
+    const payload = await postJson("/llm-score", requestBody());
+    const analysis = payload.local_analysis;
+    analysis.validated_scores = payload.validated_scores;
+    state.lastAnalysis = analysis;
+    if (analysis.suggested_feedback_mode) {
+      elements.feedbackStyleValue.textContent = formatFeedbackStyle(
+        analysis.suggested_feedback_mode
+      );
+    }
+    elements.scoreSourceValue.textContent =
+      payload.source === "llm" ? "AI-assisted" : "Local fallback";
+    elements.wordCount.textContent = String(analysis.word_count);
+    elements.scoreValue.textContent = `${payload.final_total}/25`;
+    const coverage = Math.round(analysis.coverage_ratio * 100);
+    elements.coverageValue.textContent = `${coverage}%`;
+    elements.coverageFill.style.width = `${coverage}%`;
+    renderStructure({
+      ...analysis,
+      grade_band: payload.grade_band,
+    });
+    renderCriterionScores(analysis);
+
+    const fallbackMessage = payload.fallback_reason
+      ? `\n\nFallback reason: ${payload.fallback_reason}`
+      : "";
+    renderFeedback(
+      `AI-assisted scoring complete. Scores are formative estimates, not official marks.${fallbackMessage}`
+    );
+    setBusy(false, "Ready");
+  } catch (error) {
+    setBusy(false, "Ready");
+    setErrorStatus("AI score issue");
+    renderFeedback(error.message);
+  }
+}
+
 function clearWorkspace() {
   elements.studentText.value = "";
   state.lastAnalysis = null;
-  elements.modeValue.textContent = "Not selected";
+  elements.feedbackStyleValue.textContent = "Not selected";
+  elements.scoreSourceValue.textContent = "Not scored";
   elements.wordCount.textContent = "0";
   elements.coverageValue.textContent = "0%";
   elements.scoreValue.textContent = "0/25";
@@ -401,6 +518,10 @@ elements.analyzeButton.addEventListener("click", () => {
   runAnalyze();
 });
 
+elements.scoreButton.addEventListener("click", () => {
+  runLLMScore();
+});
+
 elements.feedbackButton.addEventListener("click", () => {
   runFeedback();
 });
@@ -413,4 +534,24 @@ elements.clearButton.addEventListener("click", () => {
 elements.sampleButton.addEventListener("click", () => {
   elements.studentText.value = sampleDraft;
   elements.studentText.focus();
+});
+
+elements.helpButton.addEventListener("click", () => {
+  openHelpModal();
+});
+
+elements.helpCloseButton.addEventListener("click", () => {
+  closeHelpModal();
+});
+
+elements.helpModal.addEventListener("click", (event) => {
+  if (event.target === elements.helpModal) {
+    closeHelpModal();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeHelpModal();
+  }
 });

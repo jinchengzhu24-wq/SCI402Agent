@@ -43,6 +43,10 @@ button:disabled {
   opacity: 0.68;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 .app-shell {
   min-height: 100vh;
   padding: 24px;
@@ -60,6 +64,12 @@ button:disabled {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .eyebrow {
@@ -216,6 +226,12 @@ textarea:focus {
   color: var(--primary-dark);
 }
 
+.help-button {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
 .ghost-button,
 .icon-button {
   border: 1px solid transparent;
@@ -240,7 +256,7 @@ textarea:focus {
 
 .summary-strip {
   display: grid;
-  grid-template-columns: 1.05fr 0.62fr 0.76fr 0.76fr;
+  grid-template-columns: 1.08fr 0.92fr 0.58fr 0.72fr 0.7fr;
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -538,6 +554,73 @@ textarea:focus {
   background: #fbfdfc;
 }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+  background: rgba(23, 33, 31, 0.42);
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-card {
+  width: min(720px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(23, 33, 31, 0.22);
+}
+
+.modal-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.modal-content {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.modal-content section {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+
+.modal-content h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.modal-content p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.modal-content p + p {
+  margin-top: 10px;
+}
+
 @media (max-width: 940px) {
   .app-shell {
     padding: 16px;
@@ -548,11 +631,25 @@ textarea:focus {
     flex-direction: column;
   }
 
+  .topbar-actions {
+    width: 100%;
+    align-items: stretch;
+    justify-content: space-between;
+  }
+
   .summary-strip {
     grid-template-columns: 1fr;
   }
 
   textarea {
     min-height: 300px;
+  }
+
+  .modal-overlay {
+    padding: 14px;
+  }
+
+  .modal-card {
+    max-height: calc(100vh - 28px);
   }
 }

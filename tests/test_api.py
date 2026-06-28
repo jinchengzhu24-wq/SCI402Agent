@@ -8,8 +8,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from sci402_agent.api import create_app
-from sci402_agent.feedback_agent import MODE_2_STRUCTURED_GUIDANCE
+from sci402_agent.feedback_agent import (
+    MODE_1_SUPPORTIVE_INQUIRY,
+    MODE_2_STRUCTURED_GUIDANCE,
+)
 from sci402_agent.llm_client import LLMCallError, LLMConfigurationError
+from sci402_agent.llm_rubric_scorer import (
+    LLMScoringValidationError,
+    fallback_scoring_response,
+)
 
 
 def test_health_endpoint_reports_service_status(monkeypatch):
@@ -29,6 +36,11 @@ def test_index_page_is_served(monkeypatch):
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "SCI402 Feedback Agent" in response.text
+    assert "Feedback style" in response.text
+    assert "Score source" in response.text
+    assert 'id="helpButton"' in response.text
+    assert 'id="helpModal"' in response.text
+    assert "Analysis Modes" in response.text
 
 
 def test_static_app_script_is_served(monkeypatch):
@@ -38,6 +50,11 @@ def test_static_app_script_is_served(monkeypatch):
 
     assert response.status_code == 200
     assert "runFeedback" in response.text
+    assert "runLLMScore" in response.text
+    assert "openHelpModal" in response.text
+    assert "closeHelpModal" in response.text
+    assert "analysis.suggested_feedback_mode" in response.text
+    assert "analysis.validated_scores || analysis.criterion_scores" in response.text
 
 
 def test_criteria_endpoint_returns_ordered_rubric_rules(monkeypatch):
@@ -76,6 +93,7 @@ def test_analyze_endpoint_returns_profile_and_criterion_coverage(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["word_count"] == 13
+    assert payload["suggested_feedback_mode"] == MODE_1_SUPPORTIVE_INQUIRY
     assert payload["matched_criteria"] == ["C2_AI_ML_FORMULATION"]
     assert payload["criterion_coverage"][1]["id"] == "C2_AI_ML_FORMULATION"
     assert payload["criterion_coverage"][1]["is_matched"] is True
@@ -174,3 +192,68 @@ def test_feedback_endpoint_returns_502_for_llm_call_error(monkeypatch):
 
     assert response.status_code == 502
     assert response.json()["detail"] == "Model call failed."
+
+
+def test_llm_score_endpoint_returns_validated_scores(monkeypatch):
+    def fake_score_with_llm(student_text, profile):
+        payload = fallback_scoring_response(profile, "fake fallback")
+        payload["source"] = "llm"
+        payload["fallback_reason"] = None
+        payload["llm_scores"] = [
+            {
+                "id": score["id"],
+                "score_0_to_5": score["score_0_to_5"],
+                "evidence": score["evidence"],
+                "missing_items": score["missing_items"],
+                "rationale": "Mock LLM rationale.",
+                "confidence": "medium",
+                "cap_applied": False,
+            }
+            for score in profile["criterion_scores"]
+        ]
+        return payload
+
+    monkeypatch.setattr("sci402_agent.api.score_with_llm", fake_score_with_llm)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/llm-score",
+        json={
+            "student_text": (
+                "I will use a regression model with input features and an output target."
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "llm"
+    assert payload["fallback_reason"] is None
+    assert payload["local_analysis"]["word_count"] == 13
+    assert len(payload["llm_scores"]) == 5
+    assert len(payload["validated_scores"]) == 5
+    assert payload["final_total"] == payload["final_total_25"]
+
+
+def test_llm_score_endpoint_falls_back_when_llm_scoring_is_invalid(monkeypatch):
+    def fake_score_with_llm(student_text, profile):
+        raise LLMScoringValidationError("LLM returned invalid JSON.")
+
+    monkeypatch.setattr("sci402_agent.api.score_with_llm", fake_score_with_llm)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/llm-score",
+        json={
+            "student_text": (
+                "I will use a regression model with input features and an output target."
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "local_fallback"
+    assert payload["fallback_reason"] == "LLM returned invalid JSON."
+    assert payload["llm_scores"] == []
+    assert len(payload["validated_scores"]) == 5
