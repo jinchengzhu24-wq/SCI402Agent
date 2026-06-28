@@ -33,6 +33,8 @@ def build_llm_scoring_messages(
             "Score only according to the SCI402 rubric and local rule guardrails provided.",
             "Use the student's text as the only evidence source.",
             "Do not invent evidence. Do not use external literature or web knowledge.",
+            "Act as an independent second reviewer: read the full student text and make your own semantic judgement.",
+            "Use the local precheck only for structural context and hard cap guardrails; it does not contain local evidence or completion decisions.",
             "Return strict JSON only. No markdown, no code fence, no commentary.",
             _format_rubric_for_scoring(),
             _format_required_json_shape(),
@@ -42,8 +44,8 @@ def build_llm_scoring_messages(
         [
             "Student proposal text:",
             student_text,
-            "Local rule-based precheck:",
-            _format_local_profile(local_profile),
+            "Local deterministic precheck:",
+            _format_local_precheck(local_profile),
             "Now produce the JSON scoring result.",
         ]
     )
@@ -82,7 +84,22 @@ def fallback_scoring_response(
     local_scores = [
         {
             **score,
+            "local_score_0_to_5": score["score_0_to_5"],
             "rationale": "Local rule-based fallback score.",
+            "semantic_diagnosis": "LLM semantic judgement was unavailable; this card uses the local precheck.",
+            "quality_concerns": list(score.get("blocking_flags", [])),
+            "scientific_reasoning_concerns": list(score.get("blocking_flags", [])),
+            "local_precheck_blind_spots": [
+                "AI second review was unavailable, so no semantic blind spots were identified."
+            ],
+            "why_score_differs_from_local": (
+                "No AI second review was available; the local precheck score was used."
+            ),
+            "revision_focus": (
+                score["missing_items"][0]
+                if score.get("missing_items")
+                else "No local revision focus detected."
+            ),
             "confidence": "low",
             "cap_applied": bool(score.get("blocking_flags")),
             "invalid_evidence": [],
@@ -165,9 +182,18 @@ def validate_llm_scores(
             "title": local_score["title"],
             "score_0_to_5": int(llm_score["score_0_to_5"]),
             "level": _level_for_score(int(llm_score["score_0_to_5"])),
+            "local_score_0_to_5": int(local_score["score_0_to_5"]),
             "evidence": list(llm_score["evidence"]),
             "missing_items": list(llm_score["missing_items"]),
             "rationale": llm_score["rationale"],
+            "semantic_diagnosis": llm_score["semantic_diagnosis"],
+            "quality_concerns": list(llm_score["quality_concerns"]),
+            "scientific_reasoning_concerns": list(
+                llm_score["scientific_reasoning_concerns"]
+            ),
+            "local_precheck_blind_spots": list(llm_score["local_precheck_blind_spots"]),
+            "why_score_differs_from_local": llm_score["why_score_differs_from_local"],
+            "revision_focus": llm_score["revision_focus"],
             "confidence": llm_score["confidence"],
             "cap_applied": bool(llm_score["cap_applied"]),
             "blocking_flags": list(local_score.get("blocking_flags", [])),
@@ -185,14 +211,15 @@ def validate_llm_scores(
                 "One or more LLM evidence snippets were not found in the student text."
             )
 
-        if local_score.get("blocking_flags"):
-            capped_score = min(
-                validated_score["score_0_to_5"],
-                int(local_score["score_0_to_5"]),
-            )
+        cap_max = _cap_max_from_triggered_flags(
+            criterion_id,
+            validated_score["blocking_flags"],
+        )
+        if cap_max is not None:
+            capped_score = min(validated_score["score_0_to_5"], cap_max)
             if capped_score < validated_score["score_0_to_5"]:
                 validated_score["adjustments"].append(
-                    "Local cap rule reduced the LLM score."
+                    f"Local cap rule reduced the LLM score to {cap_max}/5."
                 )
             validated_score["score_0_to_5"] = capped_score
             validated_score["cap_applied"] = True
@@ -219,6 +246,12 @@ def _validate_llm_score_shape(score: dict[str, Any]) -> None:
         "evidence",
         "missing_items",
         "rationale",
+        "semantic_diagnosis",
+        "quality_concerns",
+        "scientific_reasoning_concerns",
+        "local_precheck_blind_spots",
+        "why_score_differs_from_local",
+        "revision_focus",
         "confidence",
         "cap_applied",
     )
@@ -234,6 +267,30 @@ def _validate_llm_score_shape(score: dict[str, Any]) -> None:
         raise LLMScoringValidationError("missing_items must be a list.")
     if not isinstance(score["rationale"], str) or not score["rationale"].strip():
         raise LLMScoringValidationError("rationale must be a non-empty string.")
+    if (
+        not isinstance(score["semantic_diagnosis"], str)
+        or not score["semantic_diagnosis"].strip()
+    ):
+        raise LLMScoringValidationError(
+            "semantic_diagnosis must be a non-empty string."
+        )
+    if not isinstance(score["quality_concerns"], list):
+        raise LLMScoringValidationError("quality_concerns must be a list.")
+    if not isinstance(score["scientific_reasoning_concerns"], list):
+        raise LLMScoringValidationError(
+            "scientific_reasoning_concerns must be a list."
+        )
+    if not isinstance(score["local_precheck_blind_spots"], list):
+        raise LLMScoringValidationError("local_precheck_blind_spots must be a list.")
+    if (
+        not isinstance(score["why_score_differs_from_local"], str)
+        or not score["why_score_differs_from_local"].strip()
+    ):
+        raise LLMScoringValidationError(
+            "why_score_differs_from_local must be a non-empty string."
+        )
+    if not isinstance(score["revision_focus"], str) or not score["revision_focus"].strip():
+        raise LLMScoringValidationError("revision_focus must be a non-empty string.")
     if score["confidence"] not in CONFIDENCE_VALUES:
         raise LLMScoringValidationError("confidence must be low, medium, or high.")
     if not isinstance(score["cap_applied"], bool):
@@ -269,6 +326,12 @@ def _format_required_json_shape() -> str:
         '      "evidence": ["exact quote or close snippet from student text"],\n'
         '      "missing_items": ["missing rubric item"],\n'
         '      "rationale": "brief reason grounded in the rubric",\n'
+        '      "semantic_diagnosis": "second-review judgement of completion quality",\n'
+        '      "quality_concerns": ["legacy field: concise quality concern"],\n'
+        '      "scientific_reasoning_concerns": ["scientific logic, validation, interpretation, or feasibility concern"],\n'
+        '      "local_precheck_blind_spots": ["what a keyword/checklist precheck may miss"],\n'
+        '      "why_score_differs_from_local": "explain how semantic judgement may differ from checklist coverage",\n'
+        '      "revision_focus": "one concrete revision focus for this criterion",\n'
         '      "confidence": "low",\n'
         '      "cap_applied": false\n'
         "    }\n"
@@ -278,23 +341,48 @@ def _format_required_json_shape() -> str:
     )
 
 
-def _format_local_profile(local_profile: dict[str, Any]) -> str:
+def _format_local_precheck(local_profile: dict[str, Any]) -> str:
     lines = [
         f"word_count: {local_profile['word_count']}",
-        f"estimated_local_total: {local_profile['estimated_total']}/25",
-        f"grade_band: {local_profile['grade_band']}",
-        f"structure_warnings: {', '.join(local_profile['structure_check']['warnings']) or 'none'}",
-        "criterion_prechecks:",
+        "structure_precheck:",
     ]
+    structure_check = local_profile["structure_check"]
+    detected_sections = ", ".join(
+        section["id"] for section in structure_check["detected_sections"]
+    ) or "none"
+    lines.extend(
+        [
+            f"- meets_word_requirement: {structure_check['meets_word_requirement']}",
+            f"- has_workflow_diagram: {structure_check['has_workflow_diagram']}",
+            f"- sections_in_order: {structure_check['sections_in_order']}",
+            f"- detected_sections: {detected_sections}",
+            f"- structure_warnings: {', '.join(structure_check['warnings']) or 'none'}",
+            "criterion_cap_guardrails:",
+        ]
+    )
     for score in local_profile["criterion_scores"]:
-        lines.append(
-            f"- {score['id']}: local_score={score['score_0_to_5']}/5; "
-            f"evidence={score['evidence'] or ['none']}; "
-            f"missing={score['missing_items'] or ['none']}; "
-            f"blocking_flags={score['blocking_flags'] or ['none']}"
-        )
+        cap_flags = score["blocking_flags"] or ["none"]
+        lines.append(f"- {score['id']}: triggered_cap_rules={cap_flags}")
 
     return "\n".join(lines)
+
+
+def _cap_max_from_triggered_flags(
+    criterion_id: str,
+    blocking_flags: list[str],
+) -> int | None:
+    if not blocking_flags:
+        return None
+
+    triggered_caps = [
+        int(cap_rule["max_score"])
+        for cap_rule in RUBRIC_RULES[criterion_id].get("cap_rules", [])
+        if cap_rule["message"] in blocking_flags
+    ]
+    if not triggered_caps:
+        return None
+
+    return min(triggered_caps)
 
 
 def _normalize_for_evidence(text: str) -> str:

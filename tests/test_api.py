@@ -38,6 +38,14 @@ def test_index_page_is_served(monkeypatch):
     assert "SCI402 Feedback Agent" in response.text
     assert "Feedback style" in response.text
     assert "Score source" in response.text
+    assert 'id="feedbackStyleValue">None</strong>' in response.text
+    assert "Not selected" not in response.text
+    assert "<strong>Local</strong>" in response.text
+    assert "<strong>AI</strong>" in response.text
+    assert "<strong>Fallback</strong>" in response.text
+    assert "<strong>Guidance</strong>" in response.text
+    assert "Structured guidance" not in response.text
+    assert "AI semantic judgement" not in response.text
     assert 'id="helpButton"' in response.text
     assert 'id="helpModal"' in response.text
     assert "Analysis Modes" in response.text
@@ -51,10 +59,54 @@ def test_static_app_script_is_served(monkeypatch):
     assert response.status_code == 200
     assert "runFeedback" in response.text
     assert "runLLMScore" in response.text
+    assert "lastAIReview" in response.text
+    assert "includeAIReview" in response.text
     assert "openHelpModal" in response.text
     assert "closeHelpModal" in response.text
+    assert 'MODE_2_STRUCTURED_GUIDANCE: "Guidance"' in response.text
+    assert "Structured guidance" not in response.text
+    assert "AI semantic judgement" in response.text
+    assert "AI second review" in response.text
+    assert "scientific_reasoning_concerns" in response.text
+    assert "local_precheck_blind_spots" in response.text
+    assert "why_score_differs_from_local" in response.text
+    assert "score-delta" in response.text
+    assert "toggleCriterionCard" in response.text
+    assert 'aria-expanded="false"' in response.text
+    assert "criterion-card-body" in response.text
     assert "analysis.suggested_feedback_mode" in response.text
     assert "analysis.validated_scores || analysis.criterion_scores" in response.text
+
+
+def test_static_styles_prioritize_score_source_width(monkeypatch):
+    client = TestClient(create_app())
+
+    response = client.get("/static/styles.css")
+
+    assert response.status_code == 200
+    assert "grid-template-columns: 1.02fr 1.28fr 0.58fr 0.74fr 0.62fr" in response.text
+    assert "grid-column: span 2" not in response.text
+    assert ".summary-strip > div:nth-child(n + 3)" in response.text
+    assert "text-align: center" in response.text
+    summary_start = response.text.index(".summary-strip strong")
+    summary_end = response.text.index(".coverage-track")
+    summary_css = response.text[summary_start:summary_end]
+    assert "overflow-wrap: break-word" in summary_css
+    assert "word-break: normal" in summary_css
+    assert "overflow-wrap: anywhere" not in summary_css
+    assert "white-space: nowrap" in summary_css
+
+
+def test_static_styles_support_collapsible_criterion_cards(monkeypatch):
+    client = TestClient(create_app())
+
+    response = client.get("/static/styles.css")
+
+    assert response.status_code == 200
+    assert ".criterion-card-head" in response.text
+    assert ".criterion-card-body" in response.text
+    assert ".toggle-label" in response.text
+    assert "overflow: hidden" in response.text
 
 
 def test_criteria_endpoint_returns_ordered_rubric_rules(monkeypatch):
@@ -160,6 +212,70 @@ def test_feedback_endpoint_returns_mode_analysis_and_feedback(monkeypatch):
     )
     assert captured_request["messages"][0]["role"] == "system"
     assert "SCI402 Rubric Rules" in captured_request["messages"][0]["content"]
+    assert "Priority rewrite targets" in captured_request["messages"][0]["content"]
+    assert "Rubric diagnosis" not in captured_request["messages"][0]["content"]
+
+
+def test_feedback_endpoint_accepts_ai_second_review(monkeypatch):
+    captured_request = {}
+
+    def fake_chat_completion(messages, tools=None):
+        captured_request["messages"] = messages
+        assert tools is None
+        return {"content": "AI review-based feedback.", "tool_calls": []}
+
+    monkeypatch.setattr("sci402_agent.api.chat_completion", fake_chat_completion)
+    client = TestClient(create_app())
+
+    ai_review = [
+        {
+            "id": "C2_AI_ML_FORMULATION",
+            "title": "AI / ML Problem Formulation",
+            "score_0_to_5": 4,
+            "level": "Satisfactory",
+            "local_score_0_to_5": 3,
+            "evidence": ["input features and an output target"],
+            "missing_items": ["algorithm justification"],
+            "rationale": "The AI task is mostly clear.",
+            "semantic_diagnosis": "The task framing is coherent but thin.",
+            "quality_concerns": ["The model choice is not justified."],
+            "scientific_reasoning_concerns": [
+                "The model choice is not linked to the scientific data pattern."
+            ],
+            "local_precheck_blind_spots": [
+                "Keyword coverage does not prove the output is measurable."
+            ],
+            "why_score_differs_from_local": (
+                "AI gives extra credit for coherent task framing."
+            ),
+            "revision_focus": "Justify the algorithm against the data structure.",
+            "confidence": "medium",
+            "cap_applied": False,
+            "blocking_flags": [],
+            "invalid_evidence": [],
+            "adjustments": [],
+            "source": "llm",
+        }
+    ]
+
+    response = client.post(
+        "/feedback",
+        json={
+            "student_text": (
+                "This regression project has input features and an output target."
+            ),
+            "ai_review": ai_review,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["feedback"] == "AI review-based feedback."
+    user_prompt = captured_request["messages"][1]["content"]
+    assert "AI second review:" in user_prompt
+    assert "scientific_reasoning_concerns" in user_prompt
+    assert "local_precheck_blind_spots" in user_prompt
+    assert "why_score_differs_from_local" in user_prompt
+    assert "candidate_evidence_and_guardrails" not in user_prompt
 
 
 def test_feedback_endpoint_returns_503_for_missing_llm_config(monkeypatch):
@@ -206,6 +322,12 @@ def test_llm_score_endpoint_returns_validated_scores(monkeypatch):
                 "evidence": score["evidence"],
                 "missing_items": score["missing_items"],
                 "rationale": "Mock LLM rationale.",
+                "semantic_diagnosis": "Mock semantic diagnosis.",
+                "quality_concerns": ["Mock quality concern."],
+                "scientific_reasoning_concerns": ["Mock reasoning concern."],
+                "local_precheck_blind_spots": ["Mock blind spot."],
+                "why_score_differs_from_local": "Mock score difference.",
+                "revision_focus": "Mock revision focus.",
                 "confidence": "medium",
                 "cap_applied": False,
             }
@@ -232,6 +354,12 @@ def test_llm_score_endpoint_returns_validated_scores(monkeypatch):
     assert payload["local_analysis"]["word_count"] == 13
     assert len(payload["llm_scores"]) == 5
     assert len(payload["validated_scores"]) == 5
+    assert payload["llm_scores"][0]["semantic_diagnosis"]
+    assert payload["llm_scores"][0]["scientific_reasoning_concerns"]
+    assert payload["validated_scores"][0]["local_score_0_to_5"] >= 0
+    assert payload["validated_scores"][0]["local_precheck_blind_spots"]
+    assert payload["validated_scores"][0]["why_score_differs_from_local"]
+    assert payload["validated_scores"][0]["revision_focus"]
     assert payload["final_total"] == payload["final_total_25"]
 
 

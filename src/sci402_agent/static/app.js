@@ -1,6 +1,7 @@
 const state = {
   busy: false,
   lastAnalysis: null,
+  lastAIReview: null,
 };
 
 const sampleDraft = [
@@ -94,14 +95,14 @@ function closeHelpModal() {
 
 function formatFeedbackStyle(mode) {
   const labels = {
-    MODE_1_SUPPORTIVE_INQUIRY: "Supportive inquiry",
-    MODE_2_STRUCTURED_GUIDANCE: "Structured guidance",
-    MODE_3_EXPERT_CHALLENGE: "Expert challenge",
+    MODE_1_SUPPORTIVE_INQUIRY: "Supportive",
+    MODE_2_STRUCTURED_GUIDANCE: "Guidance",
+    MODE_3_EXPERT_CHALLENGE: "Expert",
   };
-  return labels[mode] || mode || "Not selected";
+  return labels[mode] || mode || "None";
 }
 
-function renderAnalysis(analysis, { feedbackStyle = null, scoreSource = "Local rules" } = {}) {
+function renderAnalysis(analysis, { feedbackStyle = null, scoreSource = "Local precheck" } = {}) {
   state.lastAnalysis = analysis;
   const nextFeedbackStyle =
     feedbackStyle === null ? analysis.suggested_feedback_mode : feedbackStyle;
@@ -193,8 +194,16 @@ function renderStructure(analysis) {
 
 function renderCriterionScores(analysis) {
   const scores = analysis.validated_scores || analysis.criterion_scores || [];
+  const usesAIJudgement =
+    Array.isArray(analysis.validated_scores) &&
+    scores.some((criterion) => criterion.source === "llm");
+  const localScoresById = Object.fromEntries(
+    (analysis.criterion_scores || []).map((criterion) => [criterion.id, criterion])
+  );
+  const structureWarnings = analysis.structure_check?.warnings || [];
   elements.criteriaList.innerHTML = scores
-    .map((criterion) => {
+    .map((criterion, index) => {
+      const localCriterion = localScoresById[criterion.id] || criterion;
       const scoreClass =
         criterion.score_0_to_5 >= 5
           ? "is-excellent"
@@ -207,7 +216,7 @@ function renderCriterionScores(analysis) {
       const missing = criterion.missing_items.length
         ? criterion.missing_items
         : ["No major missing item detected."];
-      const blockers = criterion.blocking_flags.length
+      const blockers = criterion.blocking_flags?.length
         ? `<ul class="blocker-list">${criterion.blocking_flags
             .map((flag) => `<li>${escapeHtml(flag)}</li>`)
             .join("")}</ul>`
@@ -220,18 +229,66 @@ function renderCriterionScores(analysis) {
           </div>
         `
         : "";
+      const semanticDiagnosis = criterion.semantic_diagnosis
+        ? `
+          <div class="criterion-section">
+            <span class="mini-label">AI semantic judgement</span>
+            <p class="criterion-detail">${escapeHtml(criterion.semantic_diagnosis)}</p>
+          </div>
+        `
+        : "";
+      const qualityConcerns = criterion.quality_concerns?.length
+        ? `
+          <div class="criterion-section">
+            <span class="mini-label">Quality concerns</span>
+            ${renderList(criterion.quality_concerns)}
+          </div>
+        `
+        : "";
+      const scientificReasoningConcerns = criterion.scientific_reasoning_concerns?.length
+        ? `
+          <div class="criterion-section">
+            <span class="mini-label">Scientific reasoning concerns</span>
+            ${renderList(criterion.scientific_reasoning_concerns)}
+          </div>
+        `
+        : "";
+      const blindSpots = criterion.local_precheck_blind_spots?.length
+        ? `
+          <div class="criterion-section">
+            <span class="mini-label">Local precheck blind spots</span>
+            ${renderList(criterion.local_precheck_blind_spots)}
+          </div>
+        `
+        : "";
+      const scoreDifference = criterion.why_score_differs_from_local
+        ? `
+          <div class="criterion-section">
+            <span class="mini-label">Why AI score differs</span>
+            <p class="criterion-detail">${escapeHtml(criterion.why_score_differs_from_local)}</p>
+          </div>
+        `
+        : "";
+      const revisionFocus = criterion.revision_focus
+        ? `
+          <div class="criterion-section">
+            <span class="mini-label">Revision focus</span>
+            <p class="criterion-detail">${escapeHtml(criterion.revision_focus)}</p>
+          </div>
+        `
+        : "";
       const confidence = criterion.confidence
         ? `<span class="criterion-level">Confidence: ${escapeHtml(criterion.confidence)}</span>`
         : `<span class="criterion-level">${escapeHtml(criterion.level)}</span>`;
+      const scoreDelta =
+        usesAIJudgement && typeof criterion.local_score_0_to_5 === "number"
+          ? `<span class="score-delta">Local ${criterion.local_score_0_to_5}/5 -> AI ${criterion.score_0_to_5}/5</span>`
+          : '<span class="score-delta">Local precheck</span>';
       const invalidEvidence = criterion.invalid_evidence?.length
         ? `
           <div class="criterion-section">
             <span class="mini-label">Invalid evidence</span>
-            <ul>
-              ${criterion.invalid_evidence
-                .map((item) => `<li>${escapeHtml(item)}</li>`)
-                .join("")}
-            </ul>
+            ${renderList(criterion.invalid_evidence)}
           </div>
         `
         : "";
@@ -239,44 +296,132 @@ function renderCriterionScores(analysis) {
         ? `
           <div class="criterion-section">
             <span class="mini-label">Rule guardrails</span>
-            <ul>
-              ${criterion.adjustments
-                .map((item) => `<li>${escapeHtml(item)}</li>`)
-                .join("")}
-            </ul>
+            ${renderList(criterion.adjustments)}
           </div>
         `
         : "";
+      const localPrecheck = usesAIJudgement
+        ? `
+          <div class="review-block">
+            <span class="mini-label">Local precheck</span>
+            <p class="criterion-detail">
+              Checklist estimate: ${localCriterion.score_0_to_5}/5.
+              Matched: ${escapeHtml(formatListText(localCriterion.matched_items, "none"))}.
+              Local gaps: ${escapeHtml(formatListText(localCriterion.missing_items, "none"))}.
+            </p>
+            <div class="criterion-section">
+              <span class="mini-label">Local candidate evidence</span>
+              ${renderList(localCriterion.evidence, "No local evidence found.")}
+            </div>
+            <div class="criterion-section">
+              <span class="mini-label">Cap flags</span>
+              ${renderList(localCriterion.blocking_flags, "No hard cap triggered.")}
+            </div>
+            <div class="criterion-section">
+              <span class="mini-label">Structure warnings</span>
+              ${renderList(structureWarnings, "No structure warning detected.")}
+            </div>
+          </div>
+        `
+        : "";
+      const aiSecondReview = usesAIJudgement
+        ? `
+          <div class="review-block">
+            <span class="mini-label">AI second review</span>
+            ${rationale}
+            ${semanticDiagnosis}
+            ${qualityConcerns}
+            ${scientificReasoningConcerns}
+            ${blindSpots}
+            ${scoreDifference}
+            ${revisionFocus}
+            <div class="criterion-section">
+              <span class="mini-label">AI evidence</span>
+              ${renderList(evidence)}
+            </div>
+            <div class="criterion-section">
+              <span class="mini-label">AI missing items</span>
+              ${renderList(missing)}
+            </div>
+          </div>
+        `
+        : "";
+      const localOnlyDetails = usesAIJudgement
+        ? ""
+        : `
+            ${rationale}
+            ${semanticDiagnosis}
+            ${qualityConcerns}
+            ${revisionFocus}
+            <div class="criterion-section">
+              <span class="mini-label">Candidate evidence</span>
+              ${renderList(evidence)}
+            </div>
+            <div class="criterion-section">
+              <span class="mini-label">Local checklist gaps</span>
+              ${renderList(missing)}
+            </div>
+          `;
 
       return `
         <article class="criterion-card">
-          <div class="criterion-card-head">
+          <button
+            class="criterion-card-head"
+            type="button"
+            aria-expanded="false"
+            aria-controls="criterionBody${index}"
+          >
             <div>
               <span class="criterion-title">${escapeHtml(criterion.title)}</span>
-              ${confidence}
+              ${usesAIJudgement ? scoreDelta : ""}
             </div>
-            <span class="score-badge ${scoreClass}">${criterion.score_0_to_5}/5</span>
+            <span class="criterion-card-actions">
+              <span class="score-badge ${scoreClass}">${criterion.score_0_to_5}/5</span>
+              <span class="toggle-label">Details</span>
+            </span>
+          </button>
+          <div class="criterion-card-body" id="criterionBody${index}" hidden>
+            ${confidence}
+            ${usesAIJudgement ? "" : scoreDelta}
+            ${localPrecheck}
+            ${aiSecondReview}
+            ${localOnlyDetails}
+            ${invalidEvidence}
+            ${adjustments}
+            ${blockers}
           </div>
-          ${rationale}
-          <div class="criterion-section">
-            <span class="mini-label">Evidence</span>
-            <ul>
-              ${evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-            </ul>
-          </div>
-          <div class="criterion-section">
-            <span class="mini-label">Missing checklist</span>
-            <ul>
-              ${missing.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-            </ul>
-          </div>
-          ${invalidEvidence}
-          ${adjustments}
-          ${blockers}
         </article>
       `;
     })
     .join("");
+}
+
+function renderList(items, fallback = "No direct evidence found.") {
+  const safeItems = Array.isArray(items) && items.length ? items : [fallback];
+  return `<ul>${safeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
+function formatListText(items, fallback = "none") {
+  if (!Array.isArray(items) || !items.length) {
+    return fallback;
+  }
+  return items.join("; ");
+}
+
+function toggleCriterionCard(button) {
+  const bodyId = button.getAttribute("aria-controls");
+  const body = bodyId ? document.getElementById(bodyId) : null;
+  if (!body) {
+    return;
+  }
+
+  const willExpand = body.hidden;
+  body.hidden = !willExpand;
+  button.setAttribute("aria-expanded", String(willExpand));
+  const label = button.querySelector(".toggle-label");
+  if (label) {
+    label.textContent = willExpand ? "Hide" : "Details";
+  }
 }
 
 function renderFeedback(text) {
@@ -285,13 +430,18 @@ function renderFeedback(text) {
   );
 }
 
-function requestBody() {
-  return {
+function requestBody({ includeAIReview = false } = {}) {
+  const body = {
     student_text: elements.studentText.value,
   };
+  if (includeAIReview && Array.isArray(state.lastAIReview)) {
+    body.ai_review = state.lastAIReview;
+  }
+  return body;
 }
 
 async function runAnalyze({ silent = false } = {}) {
+  state.lastAIReview = null;
   if (!silent) {
     setBusy(true, "Analyzing");
   }
@@ -316,10 +466,18 @@ async function runAnalyze({ silent = false } = {}) {
 async function runFeedback() {
   setBusy(true, "Generating");
   try {
-    const payload = await postJson("/feedback", requestBody());
-    renderAnalysis(payload.analysis, {
+    const payload = await postJson("/feedback", requestBody({ includeAIReview: true }));
+    const analysis = payload.analysis;
+    if (Array.isArray(state.lastAIReview)) {
+      analysis.validated_scores = state.lastAIReview;
+      analysis.estimated_total = state.lastAIReview.reduce(
+        (total, criterion) => total + criterion.score_0_to_5,
+        0
+      );
+    }
+    renderAnalysis(analysis, {
       feedbackStyle: payload.mode,
-      scoreSource: "Local rules",
+      scoreSource: state.lastAIReview ? "AI review" : "Local",
     });
     renderFeedback(payload.feedback);
     setBusy(false, "Ready");
@@ -349,13 +507,14 @@ async function runLLMScore() {
     const analysis = payload.local_analysis;
     analysis.validated_scores = payload.validated_scores;
     state.lastAnalysis = analysis;
+    state.lastAIReview = payload.source === "llm" ? payload.validated_scores : null;
     if (analysis.suggested_feedback_mode) {
       elements.feedbackStyleValue.textContent = formatFeedbackStyle(
         analysis.suggested_feedback_mode
       );
     }
     elements.scoreSourceValue.textContent =
-      payload.source === "llm" ? "AI-assisted" : "Local fallback";
+      payload.source === "llm" ? "AI review" : "Fallback";
     elements.wordCount.textContent = String(analysis.word_count);
     elements.scoreValue.textContent = `${payload.final_total}/25`;
     const coverage = Math.round(analysis.coverage_ratio * 100);
@@ -384,7 +543,8 @@ async function runLLMScore() {
 function clearWorkspace() {
   elements.studentText.value = "";
   state.lastAnalysis = null;
-  elements.feedbackStyleValue.textContent = "Not selected";
+  state.lastAIReview = null;
+  elements.feedbackStyleValue.textContent = "None";
   elements.scoreSourceValue.textContent = "Not scored";
   elements.wordCount.textContent = "0";
   elements.coverageValue.textContent = "0%";
@@ -533,7 +693,19 @@ elements.clearButton.addEventListener("click", () => {
 
 elements.sampleButton.addEventListener("click", () => {
   elements.studentText.value = sampleDraft;
+  state.lastAIReview = null;
   elements.studentText.focus();
+});
+
+elements.studentText.addEventListener("input", () => {
+  state.lastAIReview = null;
+});
+
+elements.criteriaList.addEventListener("click", (event) => {
+  const button = event.target.closest(".criterion-card-head");
+  if (button) {
+    toggleCriterionCard(button);
+  }
 });
 
 elements.helpButton.addEventListener("click", () => {

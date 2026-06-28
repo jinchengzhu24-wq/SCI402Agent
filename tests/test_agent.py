@@ -64,8 +64,54 @@ def test_feedback_prompt_changes_with_guidance_mode():
         MODE_3_EXPERT_CHALLENGE,
     )[0]["content"]
 
-    assert "concrete missing items" in guidance_prompt
-    assert "step-by-step supplement requirements" in guidance_prompt
+    assert "Act as a revision coach" in guidance_prompt
+    assert "Priority rewrite targets" in guidance_prompt
+    assert "Criterion-specific revision plan" in guidance_prompt
+    assert "Scientific reasoning upgrade" in guidance_prompt
+    assert "Example sentence patterns" in guidance_prompt
+    assert "What not to waste time on" in guidance_prompt
+    assert "Score summary" not in guidance_prompt
+    assert "Rubric diagnosis" not in guidance_prompt
     assert "limitations" in expert_prompt
     assert "experimental validation" in expert_prompt
     assert "failure points" in expert_prompt
+    assert "Do not repeat the full rubric check" in expert_prompt
+
+
+def test_feedback_prompt_uses_ai_second_review_when_provided():
+    messages = build_feedback_messages(
+        "This regression project has input features and an output target.",
+        analyze_input("This regression project has input features and an output target."),
+        MODE_2_STRUCTURED_GUIDANCE,
+        ai_review=[
+            {
+                "id": "C2_AI_ML_FORMULATION",
+                "score_0_to_5": 4,
+                "local_score_0_to_5": 3,
+                "semantic_diagnosis": "The task is clear but the algorithm reasoning is thin.",
+                "scientific_reasoning_concerns": [
+                    "The model choice is not tied to the scientific data pattern."
+                ],
+                "local_precheck_blind_spots": [
+                    "Keyword coverage does not show whether the output is measurable."
+                ],
+                "why_score_differs_from_local": (
+                    "AI gives more credit for coherent task framing than the checklist."
+                ),
+                "revision_focus": "Justify why the algorithm suits the proposed data.",
+                "evidence": ["input features and an output target"],
+                "adjustments": [],
+            }
+        ],
+    )
+
+    system_prompt = messages[0]["content"]
+    user_prompt = messages[1]["content"]
+    assert "AI second review is provided" in system_prompt
+    assert "Priority rewrite targets" in system_prompt
+    assert "Scientific reasoning upgrade" in system_prompt
+    assert "AI second review:" in user_prompt
+    assert "scientific_reasoning_concerns" in user_prompt
+    assert "local_precheck_blind_spots" in user_prompt
+    assert "why_score_differs_from_local" in user_prompt
+    assert "candidate_evidence_and_guardrails" not in user_prompt

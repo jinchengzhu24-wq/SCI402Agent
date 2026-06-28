@@ -256,7 +256,7 @@ textarea:focus {
 
 .summary-strip {
   display: grid;
-  grid-template-columns: 1.08fr 0.92fr 0.58fr 0.72fr 0.7fr;
+  grid-template-columns: 1.02fr 1.28fr 0.58fr 0.74fr 0.62fr;
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -267,6 +267,10 @@ textarea:focus {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfdfc;
+}
+
+.summary-strip > div:nth-child(n + 3) {
+  text-align: center;
 }
 
 .metric-label {
@@ -280,8 +284,27 @@ textarea:focus {
 
 .summary-strip strong {
   display: block;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   font-size: 16px;
+  line-height: 1.28;
+}
+
+#feedbackStyleValue,
+#wordCount,
+#coverageValue,
+#scoreValue {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+#wordCount,
+#coverageValue,
+#scoreValue {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
 }
 
 .coverage-track {
@@ -373,22 +396,46 @@ textarea:focus {
 
 .criterion-card {
   min-width: 0;
-  padding: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfdfc;
+  overflow: hidden;
 }
 
 .criterion-card-head {
+  width: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: start;
+  align-items: center;
+  padding: 14px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.criterion-card-head:hover {
+  background: #f6faf8;
+}
+
+.criterion-card-head:focus-visible {
+  outline: 3px solid rgba(20, 107, 92, 0.18);
+  outline-offset: -3px;
+}
+
+.criterion-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.criterion-card-body {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--line);
 }
 
 .criterion-title {
   display: block;
-  margin-bottom: 5px;
   font-weight: 800;
 }
 
@@ -398,6 +445,14 @@ textarea:focus {
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.score-delta {
+  display: block;
+  margin-top: 4px;
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .criterion-detail {
@@ -436,6 +491,15 @@ textarea:focus {
   text-align: center;
 }
 
+.toggle-label {
+  min-width: 52px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: right;
+  text-transform: uppercase;
+}
+
 .score-badge.is-excellent {
   background: #e3f2ed;
   color: var(--primary-dark);
@@ -453,6 +517,18 @@ textarea:focus {
 
 .criterion-section {
   margin-top: 12px;
+}
+
+.review-block {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.review-block + .review-block {
+  margin-top: 10px;
 }
 
 .criterion-section ul {

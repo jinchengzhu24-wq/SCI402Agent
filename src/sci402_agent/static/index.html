@@ -52,7 +52,7 @@
             <div class="summary-strip">
               <div>
                 <span class="metric-label">Feedback style</span>
-                <strong id="feedbackStyleValue">Not selected</strong>
+                <strong id="feedbackStyleValue">None</strong>
               </div>
               <div>
                 <span class="metric-label">Score source</span>
@@ -109,20 +109,20 @@
           <section>
             <h3>Analysis buttons</h3>
             <p><strong>Analyze</strong> runs the local SCI402 proposal rubric check. It is fast and does not call the LLM.</p>
-            <p><strong>AI score</strong> asks the LLM to judge rubric quality, then applies local guardrails such as cap rules and evidence checks.</p>
-            <p><strong>Generate feedback</strong> produces tutor-style revision feedback using the selected feedback style.</p>
+            <p><strong>AI score</strong> asks the LLM to act as an AI second reviewer. It reads the draft independently, then the app applies local cap rules and evidence checks.</p>
+            <p><strong>Generate feedback</strong> produces tutor-style revision feedback using the selected feedback style. If AI score has already run, feedback uses that AI second-review result.</p>
           </section>
 
           <section>
             <h3>Feedback style modes</h3>
-            <p><strong>Supportive inquiry</strong> is used for blank, very short, or confused drafts. It asks one low-pressure question to help the student start.</p>
-            <p><strong>Structured guidance</strong> is used for incomplete drafts. It gives concrete rubric-based gaps and next revision steps.</p>
-            <p><strong>Expert challenge</strong> is used for stronger drafts. It pushes on limitations, validation, scientific interpretation, and risk mitigation.</p>
+            <p><strong>Supportive</strong> is used for blank, very short, or confused drafts. It asks one low-pressure question to help the student start.</p>
+            <p><strong>Guidance</strong> is used for incomplete drafts. It gives concrete rubric-based gaps and next revision steps.</p>
+            <p><strong>Expert</strong> is used for stronger drafts. It pushes on limitations, validation, scientific interpretation, and risk mitigation.</p>
           </section>
 
           <section>
             <h3>Score source</h3>
-            <p><strong>Local rules</strong> means scores come from the deterministic rubric assessor. <strong>AI-assisted</strong> means the LLM judged the draft and the local validator checked the result. <strong>Local fallback</strong> means AI scoring was unavailable or invalid, so the app kept the local score.</p>
+            <p><strong>Local</strong> means the deterministic precheck reviewed structure, checklist signals, and cap rules. <strong>AI</strong> means the LLM acted as a second reviewer and the local validator checked the result. <strong>Fallback</strong> means AI scoring was unavailable or invalid, so the app kept the local precheck score.</p>
           </section>
         </div>
       </div>

@@ -45,12 +45,21 @@ def build_feedback_messages(
     student_text: str,
     input_profile: dict[str, Any],
     selected_mode: str,
+    ai_review: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     """Build LLM messages for rubric-bound SCI402 feedback."""
+    has_ai_review = bool(ai_review)
     system_content = "\n\n".join(
         [
             "You are a SCI402 rubric-based AI tutor.",
             "Use only the SCI402 proposal rubric below as the source of feedback.",
+            (
+                "When an AI second review is provided, use it as the primary "
+                "revision diagnosis. Do not restate the Rubric Check; turn the "
+                "second-review findings into a concrete revision plan."
+            )
+            if has_ai_review
+            else "No AI second review is available; use the local precheck profile.",
             _format_rubric_rules(),
             _mode_instruction(selected_mode),
             _output_format(selected_mode),
@@ -62,7 +71,12 @@ def build_feedback_messages(
             "Student input:",
             student_text,
             "Rule-based input profile:",
-            _format_input_profile(input_profile),
+            _format_input_profile(
+                input_profile,
+                include_candidate_evidence=not has_ai_review,
+            ),
+            "AI second review:",
+            _format_ai_review(ai_review or []),
             "Generate the feedback now.",
         ]
     )
@@ -112,19 +126,20 @@ def _mode_instruction(selected_mode: str) -> str:
         return (
             "Mode Instruction: MODE_3_EXPERT_CHALLENGE\n"
             "The student has covered most rubric areas or has a high formative "
-            "score estimate. Provide advanced challenge questions and "
-            "improvement advice about limitations, edge cases, experimental "
-            "validation, failure points, and risk mitigation. Do not rewrite "
-            "the proposal."
+            "score estimate. Act as a revision coach for a stronger draft: "
+            "challenge the scientific logic, limitations, edge cases, "
+            "experimental validation, failure points, and risk mitigation. "
+            "Do not repeat the full rubric check. Do not rewrite the proposal."
         )
 
     return (
         "Mode Instruction: MODE_2_STRUCTURED_GUIDANCE\n"
         "The student has a proposal idea but the structure is incomplete. "
-        "Use the rubric to identify concrete missing items, then give "
-        "step-by-step supplement requirements. Prioritize features, output "
-        "variables, workflow, metrics, scientific interpretation, validation, "
-        "and risk mitigation when they are absent."
+        "Act as a revision coach: identify the most important next revision, "
+        "then explain what to add and why it matters scientifically. Prioritize "
+        "features, output variables, workflow, metrics, scientific "
+        "interpretation, validation, and risk mitigation when they are absent. "
+        "Do not repeat the full rubric check."
     )
 
 
@@ -140,21 +155,22 @@ def _output_format(selected_mode: str) -> str:
     return (
         "Required Output Format:\n"
         f"Mode: {selected_mode}\n"
-        "Score summary:\n"
-        "- Estimated total: <score>/25 (<grade band>)\n"
-        "- Structure warnings: <brief list or none>\n"
-        "Rubric diagnosis:\n"
-        "- C1 Scientific Background: <score>/5 - <status> - Evidence: <quote or 'not found'>\n"
-        "- C2 AI/ML Formulation: <score>/5 - <status> - Evidence: <quote or 'not found'>\n"
-        "- C3 Methodology: <score>/5 - <status> - Evidence: <quote or 'not found'>\n"
-        "- C4 Scientific Integration: <score>/5 - <status> - Evidence: <quote or 'not found'>\n"
-        "- C5 Feasibility/Ethics/Risk: <score>/5 - <status> - Evidence: <quote or 'not found'>\n"
-        "Top 3 revisions:\n"
-        "1. <specific rubric-based revision>\n"
-        "2. <specific rubric-based revision>\n"
-        "3. <specific rubric-based revision>\n"
-        "Next action:\n"
-        "<the single most important revision to do next>"
+        "Overall diagnosis:\n"
+        "<one short paragraph on the draft's main revision need>\n"
+        "Priority rewrite targets:\n"
+        "- <highest-impact area to rewrite>\n"
+        "- <second priority if needed>\n"
+        "- <third priority if needed>\n"
+        "Criterion-specific revision plan:\n"
+        "- <criterion>: <specific change, using AI second-review findings when provided>\n"
+        "- <criterion>: <specific change, using AI second-review findings when provided>\n"
+        "Scientific reasoning upgrade:\n"
+        "<explain how to improve causal logic, validation, interpretation, or feasibility>\n"
+        "Example sentence patterns:\n"
+        "- <reusable sentence frame, not a completed proposal paragraph>\n"
+        "- <reusable sentence frame, not a completed proposal paragraph>\n"
+        "What not to waste time on:\n"
+        "<one brief note about a low-priority edit>"
     )
 
 
@@ -168,12 +184,16 @@ def _prohibited_behavior() -> str:
         "- Do not write the complete proposal for the student.\n"
         "- Do not add suggestions unrelated to the SCI402 rubric.\n"
         "- Treat numeric scores as formative estimates, not official marks.\n"
-        "- Do not mark a criterion complete unless the assessor profile gives "
-        "evidence for it."
+        "- Do not repeat the Rubric Check as a five-criterion score table.\n"
+        "- Do not mark a criterion complete unless the assessor profile or AI "
+        "second review gives evidence for it."
     )
 
 
-def _format_input_profile(input_profile: dict[str, Any]) -> str:
+def _format_input_profile(
+    input_profile: dict[str, Any],
+    include_candidate_evidence: bool = True,
+) -> str:
     lines = [
         f"word_count: {input_profile['word_count']}",
         f"is_blank: {input_profile['is_blank']}",
@@ -191,8 +211,6 @@ def _format_input_profile(input_profile: dict[str, Any]) -> str:
         ) or "none"
         lines.extend(
             [
-                f"estimated_total: {input_profile['estimated_total']}/25",
-                f"grade_band: {input_profile['grade_band']}",
                 f"meets_word_requirement: {structure_check['meets_word_requirement']}",
                 f"has_workflow_diagram: {structure_check['has_workflow_diagram']}",
                 f"detected_sections: {detected_sections}",
@@ -202,16 +220,14 @@ def _format_input_profile(input_profile: dict[str, Any]) -> str:
         )
 
     criterion_scores = input_profile.get("criterion_scores", [])
-    if criterion_scores:
-        lines.append("criterion_scores:")
+    if criterion_scores and include_candidate_evidence:
+        lines.append("candidate_evidence_and_guardrails:")
         for score in criterion_scores:
-            evidence = score["evidence"][0] if score["evidence"] else "not found"
-            missing = "; ".join(score["missing_items"][:2]) or "none"
+            evidence = "; ".join(score["evidence"][:2]) or "not found"
             blockers = "; ".join(score["blocking_flags"]) or "none"
             lines.append(
-                f"- {score['id']}: {score['score_0_to_5']}/5 "
-                f"({score['level']}); evidence: {evidence}; "
-                f"missing: {missing}; blockers: {blockers}"
+                f"- {score['id']}: candidate_evidence: {evidence}; "
+                f"cap_flags: {blockers}"
             )
 
     priority_revisions = input_profile.get("priority_revisions", [])
@@ -220,3 +236,38 @@ def _format_input_profile(input_profile: dict[str, Any]) -> str:
         lines.extend(f"- {revision}" for revision in priority_revisions[:5])
 
     return "\n".join(lines)
+
+
+def _format_ai_review(ai_review: list[dict[str, Any]]) -> str:
+    if not ai_review:
+        return "not provided"
+
+    lines = []
+    for score in ai_review:
+        lines.extend(
+            [
+                f"- {score.get('id', 'UNKNOWN')}: "
+                f"AI score {score.get('score_0_to_5', 'n/a')}/5; "
+                f"local precheck {score.get('local_score_0_to_5', 'n/a')}/5",
+                f"  semantic_diagnosis: {score.get('semantic_diagnosis', 'not provided')}",
+                "  scientific_reasoning_concerns: "
+                + _format_list(score.get("scientific_reasoning_concerns")),
+                "  local_precheck_blind_spots: "
+                + _format_list(score.get("local_precheck_blind_spots")),
+                "  why_score_differs_from_local: "
+                + str(score.get("why_score_differs_from_local", "not provided")),
+                f"  revision_focus: {score.get('revision_focus', 'not provided')}",
+                "  evidence: " + _format_list(score.get("evidence")),
+                "  guardrail_adjustments: " + _format_list(score.get("adjustments")),
+            ]
+        )
+
+    return "\n".join(lines)
+
+
+def _format_list(items: Any) -> str:
+    if not items:
+        return "none"
+    if not isinstance(items, list):
+        return str(items)
+    return "; ".join(str(item) for item in items) or "none"

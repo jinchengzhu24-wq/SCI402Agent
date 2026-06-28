@@ -143,6 +143,12 @@ class RawLLMScore(BaseModel):
     evidence: list[str]
     missing_items: list[str]
     rationale: str
+    semantic_diagnosis: str
+    quality_concerns: list[str]
+    scientific_reasoning_concerns: list[str]
+    local_precheck_blind_spots: list[str]
+    why_score_differs_from_local: str
+    revision_focus: str
     confidence: str
     cap_applied: bool
 
@@ -154,15 +160,28 @@ class ValidatedLLMScore(BaseModel):
     title: str
     score_0_to_5: int
     level: str
+    local_score_0_to_5: int
     evidence: list[str]
     missing_items: list[str]
     rationale: str
+    semantic_diagnosis: str
+    quality_concerns: list[str]
+    scientific_reasoning_concerns: list[str]
+    local_precheck_blind_spots: list[str]
+    why_score_differs_from_local: str
+    revision_focus: str
     confidence: str
     cap_applied: bool
     blocking_flags: list[str]
     invalid_evidence: list[str]
     adjustments: list[str]
     source: str
+
+
+class FeedbackRequest(AnalyzeRequest):
+    """Feedback request with optional AI second-review context."""
+
+    ai_review: list[ValidatedLLMScore] | None = None
 
 
 class LLMScoreResponse(BaseModel):
@@ -269,13 +288,17 @@ def create_app() -> FastAPI:
         return _analyze_response_from_profile(profile)
 
     @app.post("/feedback", response_model=FeedbackResponse)
-    def feedback(request: AnalyzeRequest) -> FeedbackResponse:
+    def feedback(request: FeedbackRequest) -> FeedbackResponse:
         profile = assess_proposal(request.student_text)
         mode = select_mode(profile)
         messages = build_feedback_messages(
             student_text=request.student_text,
             input_profile=profile,
             selected_mode=mode,
+            ai_review=[
+                score.model_dump() if hasattr(score, "model_dump") else score.dict()
+                for score in request.ai_review or []
+            ],
         )
 
         try:
