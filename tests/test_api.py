@@ -53,6 +53,9 @@ def test_index_page_is_served(monkeypatch):
     assert 'id="helpModal"' in response.text
     assert 'id="uploadButton"' in response.text
     assert 'id="draftFileInput"' in response.text
+    assert 'id="loadingOverlay"' in response.text
+    assert 'id="loadingLabel"' in response.text
+    assert "loading-spinner" in response.text
     assert 'accept=".txt,.docx,.pdf"' in response.text
     assert "Analysis Modes" in response.text
 
@@ -72,6 +75,10 @@ def test_static_app_script_is_served(monkeypatch):
     assert "uploadButton" in response.text
     assert "draftFileInput" in response.text
     assert "resetAnalysisDisplay" in response.text
+    assert "loadingOverlay.hidden" in response.text
+    assert "loadingMessage" in response.text
+    assert "AI scoring in progress" in response.text
+    assert "Generating feedback" in response.text
     assert "lastAIReview" in response.text
     assert "includeAIReview" in response.text
     assert "openHelpModal" in response.text
@@ -102,6 +109,11 @@ def test_static_styles_prioritize_score_source_width(monkeypatch):
     assert ".summary-strip > div:nth-child(n + 3)" in response.text
     assert "text-align: center" in response.text
     assert ".panel-actions" in response.text
+    assert ".loading-overlay" in response.text
+    assert ".loading-spinner" in response.text
+    assert "@keyframes loading-spin" in response.text
+    assert "@keyframes loading-sweep" in response.text
+    assert "prefers-reduced-motion" in response.text
     summary_start = response.text.index(".summary-strip strong")
     summary_end = response.text.index(".coverage-track")
     summary_css = response.text[summary_start:summary_end]

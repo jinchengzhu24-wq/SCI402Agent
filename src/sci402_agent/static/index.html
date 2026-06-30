@@ -26,6 +26,25 @@
           </div>
         </header>
 
+        <div
+          class="loading-overlay"
+          id="loadingOverlay"
+          role="status"
+          aria-live="polite"
+          hidden
+        >
+          <div class="loading-panel">
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <div>
+              <p class="loading-label" id="loadingLabel">Working</p>
+              <p class="loading-detail">Keeping the draft in place while the check runs.</p>
+            </div>
+            <div class="loading-track" aria-hidden="true">
+              <div class="loading-fill"></div>
+            </div>
+          </div>
+        </div>
+
         <div class="tool-grid">
           <section class="input-panel" aria-labelledby="inputTitle">
             <div class="panel-heading">

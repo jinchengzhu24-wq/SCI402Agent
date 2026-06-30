@@ -31,6 +31,8 @@ const elements = {
   helpButton: document.querySelector("#helpButton"),
   helpModal: document.querySelector("#helpModal"),
   helpCloseButton: document.querySelector("#helpCloseButton"),
+  loadingOverlay: document.querySelector("#loadingOverlay"),
+  loadingLabel: document.querySelector("#loadingLabel"),
   serviceStatus: document.querySelector("#serviceStatus"),
   feedbackStyleValue: document.querySelector("#feedbackStyleValue"),
   scoreSourceValue: document.querySelector("#scoreSourceValue"),
@@ -90,12 +92,25 @@ function setBusy(isBusy, label = "Ready") {
   elements.serviceStatus.textContent = label;
   elements.serviceStatus.classList.toggle("is-busy", isBusy);
   elements.serviceStatus.classList.remove("is-error");
+  elements.loadingOverlay.hidden = !isBusy;
+  elements.loadingLabel.textContent = loadingMessage(label);
 }
 
 function setErrorStatus(message) {
   elements.serviceStatus.textContent = message;
   elements.serviceStatus.classList.remove("is-busy");
   elements.serviceStatus.classList.add("is-error");
+  elements.loadingOverlay.hidden = true;
+}
+
+function loadingMessage(label) {
+  const messages = {
+    Analyzing: "Analyzing draft",
+    "AI scoring": "AI scoring in progress",
+    Generating: "Generating feedback",
+    Uploading: "Extracting uploaded file",
+  };
+  return messages[label] || label || "Working";
 }
 
 function openHelpModal() {
@@ -612,6 +627,7 @@ function clearWorkspace() {
   renderFeedback("Generate feedback to see the tutor response.");
   elements.serviceStatus.textContent = "Ready";
   elements.serviceStatus.classList.remove("is-error", "is-busy");
+  elements.loadingOverlay.hidden = true;
 }
 
 function escapeHtml(value) {
