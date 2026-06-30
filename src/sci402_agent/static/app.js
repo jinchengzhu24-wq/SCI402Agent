@@ -26,6 +26,8 @@ const elements = {
   feedbackButton: document.querySelector("#feedbackButton"),
   clearButton: document.querySelector("#clearButton"),
   sampleButton: document.querySelector("#sampleButton"),
+  uploadButton: document.querySelector("#uploadButton"),
+  draftFileInput: document.querySelector("#draftFileInput"),
   helpButton: document.querySelector("#helpButton"),
   helpModal: document.querySelector("#helpModal"),
   helpCloseButton: document.querySelector("#helpCloseButton"),
@@ -60,12 +62,30 @@ async function postJson(path, body) {
   return data;
 }
 
+async function postFormData(path, formData) {
+  const response = await fetch(path, {
+    method: "POST",
+    body: formData,
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) {
+    const message = data.detail || `Request failed with status ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
 function setBusy(isBusy, label = "Ready") {
   state.busy = isBusy;
   elements.analyzeButton.disabled = isBusy;
   elements.scoreButton.disabled = isBusy;
   elements.feedbackButton.disabled = isBusy;
   elements.sampleButton.disabled = isBusy;
+  elements.uploadButton.disabled = isBusy;
+  elements.draftFileInput.disabled = isBusy;
   elements.clearButton.disabled = isBusy;
   elements.serviceStatus.textContent = label;
   elements.serviceStatus.classList.toggle("is-busy", isBusy);
@@ -430,6 +450,21 @@ function renderFeedback(text) {
   );
 }
 
+function resetAnalysisDisplay() {
+  state.lastAnalysis = null;
+  state.lastAIReview = null;
+  elements.feedbackStyleValue.textContent = "None";
+  elements.scoreSourceValue.textContent = "Not scored";
+  elements.wordCount.textContent = "0";
+  elements.coverageValue.textContent = "0%";
+  elements.scoreValue.textContent = "0/25";
+  elements.coverageFill.style.width = "0%";
+  elements.structureBox.innerHTML =
+    '<p class="empty-state">Run analysis to see structure checks.</p>';
+  elements.criteriaList.innerHTML =
+    '<p class="empty-state">Run analysis to see the five SCI402 rubric areas.</p>';
+}
+
 function requestBody({ includeAIReview = false } = {}) {
   const body = {
     student_text: elements.studentText.value,
@@ -500,6 +535,37 @@ async function runFeedback() {
   }
 }
 
+async function runUpload(file) {
+  if (!file) {
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+  setBusy(true, "Uploading");
+  try {
+    const payload = await postFormData("/upload-draft", formData);
+    elements.studentText.value = payload.extracted_text;
+    resetAnalysisDisplay();
+    const warningText = payload.warnings.length
+      ? `\n\nWarnings:\n${payload.warnings
+          .map((warning) => `- ${warning}`)
+          .join("\n")}`
+      : "";
+    renderFeedback(
+      `Uploaded \`${payload.filename}\` and extracted ${payload.character_count} characters. Review or edit the draft, then run Analyze or AI score.${warningText}`
+    );
+    setBusy(false, "Ready");
+    elements.studentText.focus();
+  } catch (error) {
+    setBusy(false, "Ready");
+    setErrorStatus("Upload issue");
+    renderFeedback(error.message);
+  } finally {
+    elements.draftFileInput.value = "";
+  }
+}
+
 async function runLLMScore() {
   setBusy(true, "AI scoring");
   try {
@@ -542,18 +608,7 @@ async function runLLMScore() {
 
 function clearWorkspace() {
   elements.studentText.value = "";
-  state.lastAnalysis = null;
-  state.lastAIReview = null;
-  elements.feedbackStyleValue.textContent = "None";
-  elements.scoreSourceValue.textContent = "Not scored";
-  elements.wordCount.textContent = "0";
-  elements.coverageValue.textContent = "0%";
-  elements.scoreValue.textContent = "0/25";
-  elements.coverageFill.style.width = "0%";
-  elements.structureBox.innerHTML =
-    '<p class="empty-state">Run analysis to see structure checks.</p>';
-  elements.criteriaList.innerHTML =
-    '<p class="empty-state">Run analysis to see the five SCI402 rubric areas.</p>';
+  resetAnalysisDisplay();
   renderFeedback("Generate feedback to see the tutor response.");
   elements.serviceStatus.textContent = "Ready";
   elements.serviceStatus.classList.remove("is-error", "is-busy");
@@ -693,8 +748,19 @@ elements.clearButton.addEventListener("click", () => {
 
 elements.sampleButton.addEventListener("click", () => {
   elements.studentText.value = sampleDraft;
+  resetAnalysisDisplay();
   state.lastAIReview = null;
   elements.studentText.focus();
+});
+
+elements.uploadButton.addEventListener("click", () => {
+  if (!state.busy) {
+    elements.draftFileInput.click();
+  }
+});
+
+elements.draftFileInput.addEventListener("change", () => {
+  runUpload(elements.draftFileInput.files[0]);
 });
 
 elements.studentText.addEventListener("input", () => {

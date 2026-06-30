@@ -5,11 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .document_extractor import (
+    DraftExtractionError,
+    UnsupportedDraftFileError,
+    extract_draft_text,
+)
 from .env import load_environment
 from .feedback_agent import build_feedback_messages, select_mode
 from .llm_client import LLMCallError, LLMConfigurationError, chat_completion
@@ -133,6 +138,15 @@ class FeedbackResponse(BaseModel):
     mode: str
     analysis: AnalyzeResponse
     feedback: str
+
+
+class UploadDraftResponse(BaseModel):
+    """Text extracted from an uploaded student draft."""
+
+    filename: str
+    character_count: int
+    extracted_text: str
+    warnings: list[str]
 
 
 class RawLLMScore(BaseModel):
@@ -286,6 +300,21 @@ def create_app() -> FastAPI:
     def analyze_proposal(request: AnalyzeRequest) -> AnalyzeResponse:
         profile = assess_proposal(request.student_text)
         return _analyze_response_from_profile(profile)
+
+    @app.post("/upload-draft", response_model=UploadDraftResponse)
+    async def upload_draft(file: UploadFile = File(...)) -> UploadDraftResponse:
+        filename = file.filename or "draft"
+        try:
+            content = await file.read()
+            payload = extract_draft_text(filename, content)
+        except UnsupportedDraftFileError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except DraftExtractionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            await file.close()
+
+        return UploadDraftResponse(**payload)
 
     @app.post("/feedback", response_model=FeedbackResponse)
     def feedback(request: FeedbackRequest) -> FeedbackResponse:

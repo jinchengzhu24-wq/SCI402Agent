@@ -3,3 +3,6 @@ uvicorn
 volcengine-python-sdk[ark]
 python-dotenv
 pytest
+python-multipart
+python-docx
+pypdf

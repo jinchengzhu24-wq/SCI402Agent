@@ -1,7 +1,10 @@
 import sys
+from io import BytesIO
 from pathlib import Path
 
+from docx import Document
 from fastapi.testclient import TestClient
+from pypdf import PdfWriter
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +51,9 @@ def test_index_page_is_served(monkeypatch):
     assert "AI semantic judgement" not in response.text
     assert 'id="helpButton"' in response.text
     assert 'id="helpModal"' in response.text
+    assert 'id="uploadButton"' in response.text
+    assert 'id="draftFileInput"' in response.text
+    assert 'accept=".txt,.docx,.pdf"' in response.text
     assert "Analysis Modes" in response.text
 
 
@@ -59,6 +65,13 @@ def test_static_app_script_is_served(monkeypatch):
     assert response.status_code == 200
     assert "runFeedback" in response.text
     assert "runLLMScore" in response.text
+    assert "runUpload" in response.text
+    assert "postFormData" in response.text
+    assert "FormData" in response.text
+    assert '"/upload-draft"' in response.text
+    assert "uploadButton" in response.text
+    assert "draftFileInput" in response.text
+    assert "resetAnalysisDisplay" in response.text
     assert "lastAIReview" in response.text
     assert "includeAIReview" in response.text
     assert "openHelpModal" in response.text
@@ -88,6 +101,7 @@ def test_static_styles_prioritize_score_source_width(monkeypatch):
     assert "grid-column: span 2" not in response.text
     assert ".summary-strip > div:nth-child(n + 3)" in response.text
     assert "text-align: center" in response.text
+    assert ".panel-actions" in response.text
     summary_start = response.text.index(".summary-strip strong")
     summary_end = response.text.index(".coverage-track")
     summary_css = response.text[summary_start:summary_end]
@@ -155,6 +169,96 @@ def test_analyze_endpoint_returns_profile_and_criterion_coverage(monkeypatch):
     assert payload["structure_check"]["required_word_count"] == 3000
     assert len(payload["criterion_scores"]) == 5
     assert payload["priority_revisions"]
+
+
+def test_upload_draft_txt_returns_extracted_text(monkeypatch):
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/upload-draft",
+        files={"file": ("draft.txt", b"\xef\xbb\xbfProposal text here.", "text/plain")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["filename"] == "draft.txt"
+    assert payload["extracted_text"] == "Proposal text here."
+    assert payload["character_count"] == len("Proposal text here.")
+    assert payload["warnings"] == []
+
+
+def test_upload_draft_docx_returns_paragraph_and_table_text(monkeypatch):
+    client = TestClient(create_app())
+    document = Document()
+    document.add_paragraph("Paragraph proposal text.")
+    table = document.add_table(rows=1, cols=2)
+    table.cell(0, 0).text = "Input features"
+    table.cell(0, 1).text = "Output target"
+    buffer = BytesIO()
+    document.save(buffer)
+
+    response = client.post(
+        "/upload-draft",
+        files={
+            "file": (
+                "draft.docx",
+                buffer.getvalue(),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "Paragraph proposal text." in payload["extracted_text"]
+    assert "Input features | Output target" in payload["extracted_text"]
+    assert payload["character_count"] == len(payload["extracted_text"])
+
+
+def test_upload_draft_rejects_unsupported_file_type(monkeypatch):
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/upload-draft",
+        files={"file": ("draft.rtf", b"{\\rtf1 draft}", "application/rtf")},
+    )
+
+    assert response.status_code == 400
+    assert "Unsupported file type" in response.json()["detail"]
+
+
+def test_upload_draft_empty_file_returns_warning(monkeypatch):
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/upload-draft",
+        files={"file": ("empty.txt", b"", "text/plain")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["extracted_text"] == ""
+    assert payload["character_count"] == 0
+    assert "Uploaded file is empty." in payload["warnings"]
+
+
+def test_upload_draft_blank_pdf_returns_scanned_warning(monkeypatch):
+    client = TestClient(create_app())
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    buffer = BytesIO()
+    writer.write(buffer)
+
+    response = client.post(
+        "/upload-draft",
+        files={"file": ("blank.pdf", buffer.getvalue(), "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["extracted_text"] == ""
+    assert payload["character_count"] == 0
+    assert any("No extractable text" in warning for warning in payload["warnings"])
 
 
 def test_chat_endpoint_returns_model_content(monkeypatch):

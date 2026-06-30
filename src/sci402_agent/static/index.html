@@ -30,8 +30,17 @@
           <section class="input-panel" aria-labelledby="inputTitle">
             <div class="panel-heading">
               <h2 id="inputTitle">Student Draft</h2>
-              <button class="ghost-button" id="sampleButton" type="button">Sample</button>
+              <div class="panel-actions">
+                <button class="ghost-button" id="sampleButton" type="button">Sample</button>
+                <button class="ghost-button" id="uploadButton" type="button">Upload</button>
+              </div>
             </div>
+            <input
+              id="draftFileInput"
+              type="file"
+              accept=".txt,.docx,.pdf"
+              hidden
+            >
 
             <label class="field-label" for="studentText">Proposal text</label>
             <textarea
